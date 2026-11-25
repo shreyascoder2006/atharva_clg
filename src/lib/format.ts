@@ -36,8 +36,10 @@ export function formatDuration(hours: number): string {
   const sign = hours < 0 ? '−' : '';
   const h = Math.abs(hours);
   if (h >= 48) {
-    const d = Math.floor(h / 24);
-    const r = Math.round(h - d * 24);
+    // Round to whole hours first, so 71.99h reads "3d", not "2d 24h".
+    const total = Math.round(h);
+    const d = Math.floor(total / 24);
+    const r = total % 24;
     return `${sign}${d}d${r ? ` ${r}h` : ''}`;
   }
   if (h >= 1) {

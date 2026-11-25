@@ -21,6 +21,12 @@ export interface Anchor {
   lastX: number;
   lastY: number;
   lastO: number;
+  /** When set, `data-flip="1"` is written once the anchor is within this many px of the right edge. */
+  flipWithin?: number;
+  lastFlip?: boolean;
+  /** When set, `data-far="1"` is written while the camera is beyond this distance from the globe centre. */
+  farBeyond?: number;
+  lastFar?: boolean;
 }
 
 const registry = new Map<string, Anchor>();
@@ -35,11 +41,15 @@ export function anchor(id: string): Anchor {
 }
 
 /** Callback ref for a DOM overlay element anchored to `id`. */
-export function useAnchorRef(id: string) {
+export function useAnchorRef(id: string, flipWithin?: number, farBeyond?: number) {
   return useCallback(
     (el: HTMLElement | null) => {
       const a = anchor(id);
       a.el = el;
+      a.flipWithin = flipWithin;
+      a.farBeyond = farBeyond;
+      a.lastFlip = undefined;
+      a.lastFar = undefined;
       a.lastX = a.lastY = a.lastO = NaN;
       if (el) {
         el.style.position = 'absolute';
@@ -49,7 +59,7 @@ export function useAnchorRef(id: string) {
         el.style.opacity = '0';
       }
     },
-    [id],
+    [id, flipWithin, farBeyond],
   );
 }
 
@@ -63,6 +73,7 @@ const ndc = new Vector3();
 export function AnchorProjector() {
   useFrame(({ camera, size }) => {
     camera.updateMatrixWorld();
+    const camDist = camera.position.length();
     for (const a of registry.values()) {
       const el = a.el;
       if (!el) continue;
@@ -75,6 +86,20 @@ export function AnchorProjector() {
         el.style.opacity = String(o);
         el.style.visibility = o <= 0.01 ? 'hidden' : 'visible';
         a.lastO = o;
+      }
+      if (a.flipWithin !== undefined) {
+        const flip = x > size.width - a.flipWithin;
+        if (flip !== a.lastFlip) {
+          el.dataset.flip = flip ? '1' : '0';
+          a.lastFlip = flip;
+        }
+      }
+      if (a.farBeyond !== undefined) {
+        const far = camDist > a.farBeyond;
+        if (far !== a.lastFar) {
+          el.dataset.far = far ? '1' : '0';
+          a.lastFar = far;
+        }
       }
       if (o > 0.01 && (x !== a.lastX || y !== a.lastY)) {
         el.style.transform = `translate3d(${x}px, ${y}px, 0)`;

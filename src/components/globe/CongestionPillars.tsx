@@ -5,31 +5,10 @@ import { CircleGeometry, Color, CylinderGeometry, DoubleSide, Group, Mesh, Quate
 import { PORTS, type PortCongestion } from '@/data/shipment';
 import { latLonToVector3 } from '@/lib/geo';
 import { PALETTE } from '@/lib/palette';
-import { useShipment, type ShipmentState } from '@/store/shipment';
+import { portReading } from '@/lib/congestion';
+import { useShipment } from '@/store/shipment';
 import { anchor } from './anchors';
 import { facing, pxAt } from './frame';
-
-/** Live congestion reading, nudged by whatever disruption is in play. */
-export function portReading(p: PortCongestion, st: Pick<ShipmentState, 'customs' | 'redSea'>, t: number) {
-  let dwell = p.dwellDays;
-  let util = p.yardUtil;
-  if (p.id === 'jnpt' && st.customs === 'active') {
-    dwell += 1.3;
-    util += 0.08;
-  }
-  if (p.id === 'suez' && st.redSea === 'active') dwell += 0.9;
-  if (p.id === 'jebelAli' && st.redSea === 'seaair') {
-    dwell += 0.4;
-    util += 0.06;
-  }
-  // A slow, deterministic breath per port so the column feels live.
-  const phase = p.at[0] * 0.37 + p.at[1] * 0.11;
-  dwell *= 1 + Math.sin(t * 0.21 + phase) * 0.035;
-  util = Math.min(0.99, util * (1 + Math.sin(t * 0.17 + phase * 2) * 0.015));
-  const score = 0.55 * util + 0.45 * Math.min(1, dwell / 4);
-  const tone = score >= 0.75 ? 'crimson' : score >= 0.58 ? 'amber' : 'emerald';
-  return { dwell, util, score, tone } as const;
-}
 
 const toneHex = { crimson: PALETTE.crimson, amber: PALETTE.amber, emerald: PALETTE.emerald } as const;
 
@@ -114,7 +93,8 @@ function Pillar({ port }: { port: PortCongestion }) {
     const g = group.current;
     if (!g) return;
     const st = useShipment.getState();
-    const r = portReading(port, st, performance.now() / 1000);
+    // Same clock as the HUD's congestion table, so the column and its tag agree.
+    const r = portReading(port, st, st.nowH * 3600);
     const color = toneHex[r.tone];
     colMat.uniforms.uColor.value.set(color);
     capMat.uniforms.uColor.value.set(color);

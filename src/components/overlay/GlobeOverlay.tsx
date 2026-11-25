@@ -1,12 +1,11 @@
-import { useEffect, useState } from 'react';
 import { Box, ChevronRight, Navigation } from 'lucide-react';
 
 import { useAnchorRef } from '@/components/globe/anchors';
-import { portReading } from '@/components/globe/CongestionPillars';
-import { usePlaceSpecs, type LabelSpec } from '@/components/globe/PlaceLabels';
+import { usePlaceSpecs, type LabelSpec } from '@/components/globe/placeSpecs';
 import { RoleAvatar } from '@/components/hud/ui';
 import { PORTS, ROLES, SHIPMENT, ULIP, type PortCongestion, type UlipConnector } from '@/data/shipment';
 import { formatDuration, formatLatLonShort, formatStamp } from '@/lib/format';
+import { portReading } from '@/lib/congestion';
 import { PALETTE } from '@/lib/palette';
 import { batonAt, cargoAt } from '@/lib/schedule';
 import { useSchedule, useShipment, useViewHour } from '@/store/shipment';
@@ -37,11 +36,12 @@ export function GlobeOverlay() {
 function PlaceTag({ spec }: { spec: LabelSpec }) {
   const ref = useAnchorRef(`place:${spec.id}`);
   const left = spec.align === 'left';
+  const below = spec.align === 'below';
   return (
     <div ref={ref} className="transition-opacity duration-300">
       <div
-        className={`flex items-center gap-1.5 whitespace-nowrap ${left ? 'flex-row-reverse' : ''}`}
-        style={{ transform: `translate(${left ? 'calc(-100% + 3px)' : '-3px'}, -50%)` }}
+        className={`flex items-center gap-1.5 whitespace-nowrap ${left ? 'flex-row-reverse' : below ? 'flex-col' : ''}`}
+        style={{ transform: below ? 'translate(-50%, -3px)' : `translate(${left ? 'calc(-100% + 3px)' : '-3px'}, -50%)` }}
       >
         <span className="h-[6px] w-[6px] shrink-0 rounded-full border-[1.5px] border-white bg-ink/75 shadow-[0_1px_3px_rgb(15_23_42/0.3)]" />
         <span
@@ -56,20 +56,12 @@ function PlaceTag({ spec }: { spec: LabelSpec }) {
   );
 }
 
-function useSecondTick(ms = 1000) {
-  const [, set] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => set((n) => n + 1), ms);
-    return () => clearInterval(id);
-  }, [ms]);
-}
-
 function PortTag({ port }: { port: PortCongestion }) {
   const ref = useAnchorRef(`port:${port.id}`);
   const customs = useShipment((s) => s.customs);
   const redSea = useShipment((s) => s.redSea);
-  useSecondTick(1500);
-  const r = portReading(port, { customs, redSea }, performance.now() / 1000);
+  const nowH = useShipment((s) => s.nowH);
+  const r = portReading(port, { customs, redSea }, nowH * 3600);
   const hex = r.tone === 'crimson' ? PALETTE.crimson : r.tone === 'amber' ? PALETTE.amber : PALETTE.emerald;
   return (
     <div ref={ref} className="transition-opacity duration-300">
@@ -87,17 +79,20 @@ function PortTag({ port }: { port: PortCongestion }) {
   );
 }
 
+// The four connectors sit within ~100 km of each other, so their tags fan out to the
+// four quadrants rather than stacking on the port.
 const ULIP_OFFSET: Record<string, string> = {
-  fastag: 'translate(10px, -110%)',
-  icegate: 'translate(calc(-100% - 10px), -120%)',
-  vahan: 'translate(10px, 10%)',
-  portgate: 'translate(calc(-100% - 10px), 15%)',
+  fastag: 'translate(26px, -190%)',
+  icegate: 'translate(calc(-100% - 26px), -230%)',
+  vahan: 'translate(26px, 90%)',
+  portgate: 'translate(calc(-100% - 26px), 120%)',
 };
 
 function UlipTag({ c }: { c: UlipConnector }) {
   const ref = useAnchorRef(`ulip:${c.id}`);
   const latest = useShipment((s) => s.ulipLog.find((e) => e.connector === c.id));
-  const fresh = latest && performance.now() - latest.born < 2500;
+  const nowH = useShipment((s) => s.nowH);
+  const fresh = !!latest && (nowH - latest.h) * 3600 < 3;
   return (
     <div ref={ref} className="transition-opacity duration-300">
       <div
@@ -128,7 +123,9 @@ function HubTag() {
 
 /** The frosted telemetry pin riding on the live cargo position. */
 function TelemetryPin() {
-  const ref = useAnchorRef('cargo');
+  // Flip to the marker's left when the card would slide under the workspace panel.
+  const panelOpen = useShipment((s) => s.panelOpen);
+  const ref = useAnchorRef('cargo', panelOpen ? 700 : 300, 1.9);
   const schedule = useSchedule();
   const h = useViewHour();
   const nowH = useShipment((s) => s.nowH);
@@ -154,12 +151,22 @@ function TelemetryPin() {
   const live = alertOn ? PALETTE.crimson : PALETTE.cobalt;
 
   return (
-    <div ref={ref} className="transition-opacity duration-300">
-      <div className="relative" style={{ transform: 'translate(18px, calc(-100% - 16px))' }}>
-        <svg className="absolute -bottom-4 -left-[18px] overflow-visible" width="20" height="16" aria-hidden>
+    <div ref={ref} className="pin transition-opacity duration-300">
+      <div className="pin-body relative">
+        <svg className="pin-leader absolute -bottom-4 overflow-visible" width="20" height="16" aria-hidden>
           <path d="M1 15.5 L19 1" stroke="rgba(15,23,42,0.3)" strokeWidth="1" fill="none" />
         </svg>
-        <div className="glass-strong pointer-events-auto w-[252px] rounded-2xl p-3">
+        {/* Orbital distance: a compact pill that expands on hover. */}
+        <div className="pin-compact glass-strong pointer-events-auto items-center gap-2 rounded-full py-1 pr-2.5 pl-1">
+          <RoleAvatar role={baton.role} size={22} />
+          <span className="num text-[11.5px] font-semibold text-ink">{SHIPMENT.container}</span>
+          <span className="h-3 w-px bg-slate-900/10" />
+          <span className="num text-[11px] font-semibold" style={{ color: live }}>
+            {nextStop.h > h ? formatDuration(nextStop.h - h) : '—'}
+          </span>
+          <span className="text-[10px] text-muted">{nextStop.label.replace('ETA ', '→ ')}</span>
+        </div>
+        <div className="pin-full glass-strong pointer-events-auto w-[252px] rounded-2xl p-3">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5">
               <span className="relative flex h-2 w-2">

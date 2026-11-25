@@ -43,7 +43,7 @@ export function CargoMarker() {
   const pulse = useRef<Mesh>(null);
   const stem = useRef<Mesh>(null);
   const hit = useRef<Mesh>(null);
-  const pulseMat = useMemo(pulseMaterial, []);
+  const pulseMat = useMemo(() => pulseMaterial(), []);
   const startDive = useShipment((s) => s.startDive);
 
   useFrame(({ camera, clock }) => {

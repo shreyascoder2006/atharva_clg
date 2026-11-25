@@ -1,6 +1,6 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Color, DoubleSide, Mesh, ShaderMaterial, Vector3 } from 'three';
+import { Color, DoubleSide, Mesh, ShaderMaterial } from 'three';
 
 import { latLonToVector3 } from '@/lib/geo';
 import { PALETTE } from '@/lib/palette';
@@ -92,4 +92,3 @@ export function SonarField() {
   );
 }
 
-export const SURFACE_UP = new Vector3(0, 1, 0);

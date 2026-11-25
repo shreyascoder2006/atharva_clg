@@ -25,7 +25,7 @@ interface Zone {
 }
 
 const ZONES: Record<Role, Zone> = {
-  exporter: { cam: [27, 38], camR: 3.55, target: null },
+  exporter: { cam: [26, 41], camR: 3.95, target: null },
   forwarder: { cam: [16, 57], camR: 2.25, target: null },
   broker: { cam: [18.47, 72.985], camR: 1.0068, target: [18.952, 72.97] },
   transporter: { cam: [17.55, 73.38], camR: 1.024, target: [18.84, 73.38] },

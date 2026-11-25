@@ -100,9 +100,10 @@ export function ViewOffset() {
   const target = useMemo(() => {
     const wide = size.width >= 1100;
     const right = wide && panelOpen ? 404 : 0;
-    const left = wide ? 76 : 0;
-    const top = 76;
-    const bottom = size.width >= 760 ? 178 : 120;
+    // The left column (shipment card, lens dock and card) is ~372px wide.
+    const left = wide ? 340 : 0;
+    const top = 70;
+    const bottom = size.width >= 760 ? 200 : 120;
     return { x: (right - left) / 2, y: (bottom - top) / 2 };
   }, [size.width, panelOpen]);
 

@@ -104,7 +104,12 @@ export interface Schedule {
 }
 
 const CARGO_TONNES = 12.85;
-const EPS = 0.02;
+/**
+ * Duration of a forced "jump" segment, in hours (about a third of a second). The visible
+ * drive to the gate comes from the marker's smoothing, not from the schedule, so the
+ * schedule itself should land the box at once.
+ */
+const EPS = 1e-4;
 
 // --- Leg construction ---------------------------------------------------------
 
@@ -390,8 +395,8 @@ export interface CargoState {
 
 export function cargoAt(schedule: Schedule, h: number): CargoState {
   const { legs } = schedule;
-  let idx = 0;
-  let f = 0;
+  let idx: number;
+  let f: number;
   let phase: Phase = 'origin';
   let moving = false;
 

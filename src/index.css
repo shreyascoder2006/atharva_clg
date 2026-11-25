@@ -162,6 +162,39 @@
     scrollbar-color: rgb(15 23 42 / 0.12) transparent;
   }
 
+  /* Telemetry pin: sits up-right of the marker, or up-left near the right edge. */
+  .pin .pin-body {
+    transform: translate(18px, calc(-100% - 16px));
+    transition: transform 0.35s var(--ease-out-expo);
+  }
+  .pin .pin-leader {
+    left: -18px;
+  }
+  .pin[data-flip='1'] .pin-body {
+    transform: translate(calc(-100% - 18px), calc(-100% - 16px));
+  }
+  .pin[data-flip='1'] .pin-leader {
+    left: auto;
+    right: -18px;
+    transform: scaleX(-1);
+  }
+
+  .pin .pin-compact {
+    display: none;
+  }
+  .pin[data-far='1'] .pin-compact {
+    display: flex;
+  }
+  .pin[data-far='1'] .pin-full {
+    display: none;
+  }
+  .pin[data-far='1'] .pin-body:hover .pin-compact {
+    display: none;
+  }
+  .pin[data-far='1'] .pin-body:hover .pin-full {
+    display: block;
+  }
+
   .shimmer-text {
     background: linear-gradient(
       90deg,

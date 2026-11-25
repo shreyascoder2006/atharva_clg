@@ -119,6 +119,8 @@ export interface ShipmentState extends Facts {
 
   xrayOpen: boolean;
   twin: TwinState;
+  /** Set on the first dive so the lazily loaded twin stays mounted for its exit animation. */
+  twinLoaded: boolean;
   phoneOpen: boolean;
   panelOpen: boolean;
 
@@ -239,8 +241,9 @@ export const useShipment = create<ShipmentState>((set, get) => {
     toasts: [],
     xrayOpen: false,
     twin: 'closed',
+    twinLoaded: false,
     phoneOpen: false,
-    panelOpen: true,
+    panelOpen: typeof window === 'undefined' || window.innerWidth >= 1100,
 
     setRole: (role) => set((s) => ({ role, flightNonce: s.flightNonce + 1 })),
     setLens: (lens) => set({ lens }),
@@ -252,7 +255,7 @@ export const useShipment = create<ShipmentState>((set, get) => {
     togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
     startDive: () => {
       if (get().twin !== 'closed') return;
-      set({ twin: 'diving', xrayOpen: false });
+      set({ twin: 'diving', twinLoaded: true, xrayOpen: false });
     },
     finishDive: () => {
       if (get().twin === 'diving') set({ twin: 'open' });
@@ -312,9 +315,9 @@ export const useShipment = create<ShipmentState>((set, get) => {
     confirmGateIn: () => {
       const s = get();
       if (s.actuals.gateIn !== undefined || s.driving) return;
-      const h = s.nowH;
-      // The truck drives the rest of the way first; the hand-off lands when it arrives.
-      set({ forcedArrivalH: h, driving: true });
+      // Arrival is pinned a moment in the past so the box is at the gate on this very
+      // tick; the marker's smoothing turns the jump into a visible drive.
+      set({ forcedArrivalH: s.nowH - 1e-3, driving: true });
       get().pushUlip('fastag', 'Toll read · Khalapur plaza · MH12 TX 4471');
       setTimeout(() => {
         const t = get().nowH;
@@ -491,6 +494,12 @@ const pickFacts = (s: ShipmentState) => {
 export function useSchedule(): Schedule {
   const facts = useShipment(useShallow(pickFacts));
   return useMemo(() => buildSchedule({ ...facts, nowH: useShipment.getState().nowH }), [facts]);
+}
+
+/** The undisrupted plan: what every ETA and CO2 delta in the HUD is measured against. */
+export function usePlan(): Schedule {
+  const facts = useShipment(useShallow(pickFacts));
+  return useMemo(() => planOf({ ...facts, nowH: useShipment.getState().nowH }), [facts]);
 }
 
 let cached: { key: unknown[]; schedule: Schedule } | null = null;

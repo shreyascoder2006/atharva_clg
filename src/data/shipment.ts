@@ -589,6 +589,13 @@ export const XRAY_FIELDS: XrayField[] = [
   { key: 'container', label: 'Container #' },
 ];
 
+/** Each document lays its fields out in its own order, as real trade documents do. */
+export const XRAY_LAYOUT: Record<XrayDocId, XrayFieldKey[]> = {
+  ci: ['consignee', 'hs', 'gross', 'container'],
+  pl: ['container', 'consignee', 'gross', 'hs'],
+  ebl: ['consignee', 'container', 'hs', 'gross'],
+};
+
 export const XRAY_VALUES: Record<XrayDocId, Record<XrayFieldKey, string>> = {
   ci: {
     consignee: `${SHIPMENT.consignee}, Duisburg`,
