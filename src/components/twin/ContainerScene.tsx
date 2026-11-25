@@ -5,6 +5,7 @@ import {
   BoxGeometry,
   BufferGeometry,
   Color,
+  DoubleSide,
   EdgesGeometry,
   Float32BufferAttribute,
   Group,
@@ -224,12 +225,14 @@ export function ContainerScene({
         <Sensors />
       </group>
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]} receiveShadow>
+      {/* Shadow catcher. It must not write depth: 1 mm under the grid is below depth
+          precision at this camera distance, and it would z-fight the grid away. */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.01, 0]} receiveShadow renderOrder={-1}>
         <planeGeometry args={[60, 60]} />
-        <shadowMaterial opacity={0.12} />
+        <shadowMaterial opacity={0.12} depthWrite={false} />
       </mesh>
       <Grid
-        position={[0, -0.001, 0]}
+        position={[0, 0, 0]}
         args={[60, 60]}
         cellSize={0.5}
         cellThickness={0.7}
@@ -240,6 +243,7 @@ export function ContainerScene({
         fadeDistance={48}
         fadeStrength={1.2}
         infiniteGrid
+        side={DoubleSide}
       />
       <OrbitControls
         ref={controls}

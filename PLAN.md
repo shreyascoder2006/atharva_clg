@@ -68,3 +68,20 @@ A light-themed command centre that connects the Exporter, Freight Forwarder, Cus
 ### Phase 6: Verification
 - `npm run typecheck`, `npm run lint`, `npm test` and `npm run build`.
 - Start the dev server and run a Playwright smoke script that walks through each role, the X-Ray fix, a disruption and its recovery, the driver gate-in and the twin. It fails on any console error and takes screenshots for visual tuning.
+
+## Status
+
+All six phases are complete.
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | clean |
+| `npm run lint` | 0 errors, 0 warnings |
+| `npm test` | 17/17 passing (schedule engine, disruptions/recoveries, ISO 6346, SHA-256) |
+| `npm run build` | passes; vendors split into `three`, `r3f`, `motion` and `vendor` chunks; twin lazy-loaded |
+| Dev-server smoke (Playwright, 33 UI steps across every role, lens, disruption, recovery, X-Ray, phone, twin, scrub, reset) | 0 console errors, 0 console warnings |
+
+The verification surfaced and fixed these deviations from the plan:
+- drei `<Html>` was replaced by a single-root anchor projector. React 19 logs an error when `<Html>` unmounts its per-label root.
+- `PCFSoftShadowMap` was removed in three r183+. The scene uses `shadows="percentage"` with `shadow.radius`.
+- `THREE.Clock` is deprecated in three r183+ and constructed inside R3F 9. Exactly that one warning is filtered through three's `setConsoleFunction`.

@@ -110,7 +110,7 @@ function CoPilotCard({ disruption }: { disruption: ActiveDisruption }) {
   };
 
   return (
-    <div className="glass-strong flex max-h-[calc(100vh-330px)] min-h-[420px] w-[372px] flex-col overflow-hidden rounded-[22px]">
+    <div className="glass-strong flex max-h-[calc(100vh-330px)] min-h-[420px] w-[372px] max-w-[calc(100vw-92px)] flex-col overflow-hidden rounded-[22px]">
       <div className="shrink-0 px-4 pt-3.5 pb-3">
         <div className="flex items-center gap-2">
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-br from-cobalt to-[#7c9bff] text-white shadow-[0_4px_12px_-4px_rgb(37_99_235/0.7)]">

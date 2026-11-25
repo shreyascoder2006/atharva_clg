@@ -34,6 +34,20 @@ function useUlipStream() {
   }, []);
 }
 
+/** The workspace panel is an overlay below 1100px: close it whenever the window gets that narrow. */
+function useResponsivePanel() {
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 1099px)');
+    const sync = () => {
+      const s = useShipment.getState();
+      if (mq.matches && s.panelOpen) s.togglePanel();
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+}
+
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -66,6 +80,7 @@ export default function App() {
   }, [tick]);
   useUlipStream();
   useShortcuts();
+  useResponsivePanel();
 
   return (
     <div className="relative h-full w-full overflow-hidden">
@@ -80,7 +95,7 @@ export default function App() {
 
       <div className="pointer-events-none absolute inset-0 z-10">
         {/* Left column: shipment summary, lens dock, and lens card or Co-Pilot. */}
-        <div className="absolute top-4 bottom-[200px] left-4 flex flex-col gap-3">
+        <div className="absolute top-4 bottom-[200px] left-4 flex flex-col gap-3 max-md:top-[68px] max-sm:bottom-[132px]">
           <ShipmentCard collapsed={!!disruption} />
           <div className="flex min-h-0 items-start gap-2">
             <LensDock />
@@ -89,7 +104,7 @@ export default function App() {
                 {disruption ? (
                   <CoPilot key="copilot" />
                 ) : (
-                  <motion.div key="lens" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+                  <motion.div key="lens" className="max-md:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                     <LensCard />
                   </motion.div>
                 )}
@@ -99,13 +114,13 @@ export default function App() {
         </div>
 
         {/* Top bar: the role switcher centres in whatever space the toolbar leaves. */}
-        <div className="absolute top-4 right-4 left-[372px] flex items-start gap-3">
+        <div className="absolute top-4 right-4 left-[372px] flex items-start gap-3 max-md:left-4">
           <div className="flex min-w-0 flex-1 justify-center">
             <RoleSwitcher />
           </div>
           <Toolbar />
         </div>
-        <div className="absolute top-[72px] right-[416px] left-[372px] flex justify-center max-[1099px]:right-4">
+        <div className="absolute top-[72px] right-[416px] left-[372px] flex justify-center max-[1099px]:right-4 max-md:top-[124px] max-md:left-4">
           <Toasts />
         </div>
 

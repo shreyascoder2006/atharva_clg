@@ -110,15 +110,17 @@ function Scrubber() {
           >
             {live ? '● LIVE' : formatOffset(h - nowH)}
           </span>
-          <span className="num hidden text-[11px] text-muted sm:inline">{formatStamp(h)} IST</span>
+          <span className="num hidden text-[11px] text-muted md:inline">{formatStamp(h)} IST</span>
           {!live && <span className="hidden text-[10.5px] text-subtle md:inline">{h > nowH ? 'Forecast view' : 'Replay view'}</span>}
         </div>
         <div className="ml-auto flex items-center gap-1.5">
           <button
             onClick={() => setPlaying((p) => !p)}
+            aria-label={playing ? 'Pause forecast playback' : 'Play forecast'}
             className="flex h-7 items-center gap-1 rounded-lg border border-hairline bg-white/80 px-2 text-[11px] font-semibold text-ink transition-colors hover:bg-white"
           >
-            {playing ? <Pause size={12} /> : <Play size={12} />} {playing ? 'Pause' : 'Play forecast'}
+            {playing ? <Pause size={12} /> : <Play size={12} />}
+            <span className="max-sm:hidden">{playing ? 'Pause' : 'Play forecast'}</span>
           </button>
           <button
             onClick={() => {
@@ -262,7 +264,7 @@ function EscrowBar() {
   const released = ESCROW.filter((e) => escrowStatus(statuses[e.trigger]) === 'released').length;
 
   return (
-    <div className="hairline mt-2.5 border-t pt-2.5">
+    <div className="hairline mt-2.5 border-t pt-2.5 max-sm:hidden">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="eyebrow">Milestone escrow</span>
         <span className="num text-[10px] text-subtle">

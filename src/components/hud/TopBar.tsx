@@ -28,7 +28,7 @@ export function ShipmentCard({ collapsed = false }: { collapsed?: boolean }) {
   const plan = usePlan();
   const docsVerified = useShipment((s) => s.docsVerified);
   const disruption = useShipment((s) => s.disruption);
-  const [userOpen, setOpen] = useState(true);
+  const [userOpen, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
   // Folds away while the Co-Pilot needs the column, without forgetting the user's choice.
   const open = userOpen && !collapsed;
 
@@ -42,7 +42,7 @@ export function ShipmentCard({ collapsed = false }: { collapsed?: boolean }) {
         : { tone: 'emerald' as const, label: 'On track' };
 
   return (
-    <Glass className="pointer-events-auto w-[340px] rounded-2xl">
+    <Glass className="pointer-events-auto w-[340px] rounded-2xl max-md:w-[calc(100vw-32px)]">
       <div className="flex items-center gap-2.5 px-3.5 pt-3">
         <Logo />
         <div className="min-w-0 flex-1 leading-tight">
@@ -231,11 +231,13 @@ export function Toolbar() {
       </div>
 
       <ToolButton onClick={() => setXray(true)} label="X-Ray" title="AI Document X-Ray" icon={<FileSearch size={15} />} badge={docsVerified ? undefined : '1'} />
-      <ToolButton onClick={startDive} label="Twin" title="Orbital-to-container 3D cargo twin" icon={<Box size={15} />} />
+      <span className="max-md:hidden">
+        <ToolButton onClick={startDive} label="Twin" title="Orbital-to-container 3D cargo twin" icon={<Box size={15} />} />
+      </span>
       <DisruptionMenu />
       <button
         onClick={reset}
-        className="glass grid h-10 w-10 place-items-center rounded-xl text-muted transition-colors hover:text-ink"
+        className="glass grid h-10 w-10 place-items-center rounded-xl text-muted transition-colors hover:text-ink max-md:hidden"
         title="Reset demo"
         aria-label="Reset demo"
       >

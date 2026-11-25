@@ -5,10 +5,13 @@
  * with `new Path2D(d)` - no d3-geo, topojson or point-in-polygon work at runtime.
  *
  *   global : Natural Earth 50m land, whole planet, at a 4096 x 2048 reference size.
- *   detail : Natural Earth 10m land clipped to Western India (Konkan coast, Mumbai
- *            harbour, the Pune plateau), at 2048 px wide. This is where the Customs
+ *   detail : Natural Earth 10m land clipped to two Western India patches (the Konkan
+ *            coast, and Mumbai to Pune), 2048 px wide each. This is where the Customs
  *            Broker and Transporter camera zones sit, close enough that the global
  *            texture alone would smear JNPT and Thane Creek into one blob.
+ *
+ * Rings are simplified with Ramer-Douglas-Peucker at sub-pixel tolerance and written
+ * as relative, quantised path commands, which keeps the whole file under 90 KB.
  *
  *   node scripts/gen-land-paths.mjs
  */
