@@ -1,28 +1,67 @@
 @import 'tailwindcss';
 
+/*
+  Architectural light mode.
+
+  Every colour the WebGL layer uses is mirrored in src/lib/palette.ts, because
+  materials cannot read CSS custom properties. Change both together.
+*/
 @theme {
-  --color-bg: #07090d;
-  --color-surface: #0e1117;
-  --color-surface-2: #141925;
-  --color-border: #1c2230;
-  --color-text: #e6eaf2;
-  --color-muted: #7d8699;
-  --color-accent: #38bdf8;
+  --color-studio: #f4f7fb;
+  --color-studio-2: #e6eef8;
+  --color-ink: #0f172a;
+  --color-ink-2: #1e293b;
+  --color-muted: #475569;
+  --color-subtle: #94a3b8;
+  --color-hairline: rgb(15 23 42 / 0.08);
+  --color-paper: #ffffff;
 
-  --color-risk-1: #2dd4a7;
-  --color-risk-2: #facc15;
-  --color-risk-3: #fb923c;
-  --color-risk-4: #f43f5e;
+  --color-cobalt: #2563eb;
+  --color-cobalt-soft: #dbe7fe;
+  --color-emerald: #059669;
+  --color-emerald-soft: #d5f5e8;
+  --color-amber: #d97706;
+  --color-amber-soft: #fdf0d5;
+  --color-crimson: #dc2626;
+  --color-crimson-soft: #fde2e2;
+  --color-violet: #7c3aed;
+  --color-sky: #0284c7;
 
-  --color-ev-verified: #2dd4a7;
-  --color-ev-sourced: #38bdf8;
-  --color-ev-inferred: #facc15;
-  --color-ev-assumed: #a78bfa;
-
-  --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', monospace;
 
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --shadow-glass:
+    0 8px 30px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04),
+    inset 0 1px 0 rgb(255 255 255 / 0.7);
+  --shadow-lift:
+    0 24px 60px -12px rgb(15 23 42 / 0.16), 0 8px 24px rgb(15 23 42 / 0.06),
+    inset 0 1px 0 rgb(255 255 255 / 0.8);
+  --shadow-paper: 0 1px 2px rgb(15 23 42 / 0.06), 0 12px 32px -8px rgb(15 23 42 / 0.12);
+
+  --animate-sonar: sonar 1.8s var(--ease-out-expo) infinite;
+  --animate-shimmer: shimmer 2.4s linear infinite;
+
+  @keyframes sonar {
+    0% {
+      transform: scale(0.6);
+      opacity: 0.7;
+    }
+    100% {
+      transform: scale(2.4);
+      opacity: 0;
+    }
+  }
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
 }
 
 @layer base {
@@ -34,38 +73,118 @@
 
   body {
     margin: 0;
-    background: var(--color-bg);
-    color: var(--color-text);
+    color: var(--color-ink);
     font-family: var(--font-sans);
-    font-size: 14px;
-    line-height: 1.6;
+    font-size: 13px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
     overflow: hidden;
+    /* Porcelain studio sweep. The canvas is transparent so this shows through it. */
+    background:
+      radial-gradient(120% 90% at 42% 38%, #fbfdff 0%, var(--color-studio) 38%, var(--color-studio-2) 100%),
+      var(--color-studio);
   }
 
-  /* Every numeral in this product is monospaced and tabular. */
-  .num {
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.01em;
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--color-cobalt) 70%, transparent);
+    outline-offset: 2px;
+    border-radius: 6px;
   }
 
   ::selection {
-    background: color-mix(in oklab, var(--color-accent) 30%, transparent);
+    background: color-mix(in oklab, var(--color-cobalt) 22%, transparent);
   }
 
   ::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: var(--color-border);
+    background: rgb(15 23 42 / 0.12);
     border-radius: 4px;
   }
-  ::-webkit-scrollbar-thumb:hover {
-    background: #2a3346;
+}
+
+@layer components {
+  /* Frosted liquid glass. The inset highlight is what stops it reading as flat white. */
+  .glass {
+    background: rgb(255 255 255 / 0.75);
+    -webkit-backdrop-filter: blur(24px) saturate(1.5);
+    backdrop-filter: blur(24px) saturate(1.5);
+    border: 1px solid var(--color-hairline);
+    box-shadow: var(--shadow-glass);
+  }
+  .glass-strong {
+    background: rgb(255 255 255 / 0.88);
+    -webkit-backdrop-filter: blur(28px) saturate(1.6);
+    backdrop-filter: blur(28px) saturate(1.6);
+    border: 1px solid var(--color-hairline);
+    box-shadow: var(--shadow-lift);
+  }
+  .paper {
+    background: #fff;
+    border: 1px solid var(--color-hairline);
+    box-shadow: var(--shadow-paper);
+  }
+
+  /* Monospace for container IDs, HS codes, coordinates and every metric. */
+  .num {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.015em;
+  }
+
+  .eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  .hairline {
+    border-color: var(--color-hairline);
+  }
+
+  .scroll-quiet {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(15 23 42 / 0.12) transparent;
+  }
+
+  .shimmer-text {
+    background: linear-gradient(
+      90deg,
+      var(--color-cobalt) 0%,
+      #7c9bff 25%,
+      var(--color-cobalt) 50%,
+      #7c9bff 75%,
+      var(--color-cobalt) 100%
+    );
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: var(--animate-shimmer);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
