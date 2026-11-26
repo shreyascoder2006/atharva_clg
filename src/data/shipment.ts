@@ -47,7 +47,7 @@ export const ROLES: Record<Role, RoleMeta> = {
     person: 'Farhan Shaikh',
     title: 'Ocean Ops Lead · Navi Mumbai',
     initials: 'FS',
-    tone: 'sky',
+    tone: 'indigo',
     zoneLabel: 'Ocean leg · Arabian Sea',
   },
   broker: {
@@ -983,7 +983,7 @@ export const PORTS: PortCongestion[] = [
 
 // --- ULIP / API connectors -----------------------------------------------------------
 
-export type UlipId = 'fastag' | 'icegate' | 'vahan' | 'portgate';
+export type UlipId = 'fastag' | 'icegate' | 'vahan' | 'portgate' | 'ewaybill';
 
 export interface UlipConnector {
   id: UlipId;
@@ -1002,7 +1002,7 @@ export const ULIP: UlipConnector[] = [
     system: 'NETC · NPCI',
     feeds: 'Toll reads → truck position',
     at: [18.8296, 73.2865],
-    latencyMs: 180,
+    latencyMs: 38,
     messages: [
       'Toll read · Talegaon plaza · MH12 TX 4471',
       'Toll read · Khalapur plaza · lane 7',
@@ -1015,7 +1015,7 @@ export const ULIP: UlipConnector[] = [
     system: 'CBIC Customs',
     feeds: 'Shipping Bill · RMS · LEO',
     at: [18.9534, 72.9381],
-    latencyMs: 420,
+    latencyMs: 124,
     messages: [
       'SB 4471823 · status FILED · assessment queue',
       'RMS lane: facilitation · no examination',
@@ -1028,7 +1028,7 @@ export const ULIP: UlipConnector[] = [
     system: 'MoRTH · NIC',
     feeds: 'Vehicle RC · permit · fitness',
     at: [18.5308, 73.8475],
-    latencyMs: 260,
+    latencyMs: 61,
     messages: [
       'MH12 TX 4471 · RC valid · national permit OK',
       'Fitness valid to 14 Mar 2027',
@@ -1041,11 +1041,24 @@ export const ULIP: UlipConnector[] = [
     system: 'JNPA PCS',
     feeds: 'Pre-gate token · OCR gate-in',
     at: [18.9455, 72.9612],
-    latencyMs: 140,
+    latencyMs: 29,
     messages: [
       'Pre-gate token PG-0482 · Gate 4 · slot 16:00',
       'Yard block 3B allocated · row 12',
       'Gate OCR lane 4 online',
+    ],
+  },
+  {
+    id: 'ewaybill',
+    name: 'e-Way Bill',
+    system: 'GSTN · NIC',
+    feeds: 'EWB validity · Part-B vehicle',
+    at: [18.6987, 74.0201],
+    latencyMs: 72,
+    messages: [
+      'EWB 3718 4462 0915 · valid to 27 Nov 23:59 · Part-B MH12 TX 4471',
+      'EWB distance check 148 km · validity 1 day',
+      'EWB 2419 8834 1170 · closed at Mundra gate',
     ],
   },
 ];

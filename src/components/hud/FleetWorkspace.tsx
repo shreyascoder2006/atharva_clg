@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Box, FileText, Link2, Radio, Send, ShieldCheck, Snowflake, Sparkles, Thermometer, TriangleAlert } from 'lucide-react';
 
 import { FLEET } from '@/data/fleet';
+import { ULIP } from '@/data/shipment';
 import type { Role, ShipmentId } from '@/data/shipment';
 import { formatDuration, formatKg, formatStamp, formatUsd } from '@/lib/format';
 import { SURAT } from '@/lib/fleet';
@@ -191,7 +192,7 @@ function kpisFor(id: ShipmentId, role: Role, schedule: Schedule, st: ShipmentSta
         { label: 'Truck', value: 'KA01 AR 7719', mono: true },
         { label: 'Gate-in', value: 'Done', tone: 'emerald' },
         { label: 'Reefer set-point', value: '5.0 °C', mono: true },
-        { label: 'FASTag', value: '180ms · live', mono: true },
+        { label: 'FASTag', value: `${ULIP[0].latencyMs}ms · live`, mono: true },
       ],
     };
     return k[role];
@@ -226,7 +227,7 @@ function kpisFor(id: ShipmentId, role: Role, schedule: Schedule, st: ShipmentSta
       { label: 'Truck', value: 'GJ05 BX 2207', mono: true },
       { label: 'Gate-in', value: 'Done', tone: 'emerald' },
       { label: 'e-Way Bill', value: 'Closed at gate', tone: 'emerald' },
-      { label: 'FASTag', value: '180ms · live', mono: true },
+      { label: 'FASTag', value: `${ULIP[0].latencyMs}ms · live`, mono: true },
     ],
   };
   return k[role];

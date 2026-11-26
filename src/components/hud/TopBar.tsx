@@ -159,7 +159,7 @@ function Stat({
   );
 }
 
-function Logo() {
+export function Logo() {
   return (
     <span className="relative grid h-8 w-8 shrink-0 place-items-center rounded-[10px] bg-gradient-to-br from-white to-[#e8eff9] shadow-[inset_0_0_0_1px_rgb(15_23_42/0.08),0_2px_6px_rgb(15_23_42/0.06)]">
       <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden>
@@ -174,7 +174,8 @@ function Logo() {
 
 /* --- Role switcher (top-centre) --------------------------------------------------- */
 
-export function RoleSwitcher() {
+/** `compact` shows the label for the active role only, for dashboard headers. */
+export function RoleSwitcher({ compact = false }: { compact?: boolean }) {
   const role = useShipment((s) => s.role);
   const setRole = useShipment((s) => s.setRole);
   const selected = useShipment((s) => s.selected);
@@ -206,7 +207,7 @@ export function RoleSwitcher() {
             )}
             <span className="relative flex items-center gap-2">
               <RoleAvatar role={r} size={20} />
-              <span className="hidden whitespace-nowrap min-[1360px]:inline">{meta.label}</span>
+              <span className={compact ? (active ? 'whitespace-nowrap max-sm:hidden' : 'hidden') : 'hidden whitespace-nowrap min-[1360px]:inline'}>{meta.label}</span>
               {baton.role === r && (
                 <span className="flex items-center" title="Currently holds the shipment baton">
                   <Dot tone={meta.tone} pulse size={6} />

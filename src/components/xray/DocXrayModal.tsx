@@ -2,24 +2,15 @@ import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from '
 import { AnimatePresence, motion } from 'motion/react';
 import { ArrowRight, BadgeCheck, FileSearch, Lock, ScanLine, Sparkles, X } from 'lucide-react';
 
-import {
-  DOCUMENTS,
-  ROLES,
-  SHIPMENT,
-  XRAY_FIELDS,
-  XRAY_FIX,
-  XRAY_LAYOUT,
-  XRAY_VALUES,
-  type Access,
-  type XrayDocId,
-  type XrayFieldKey,
-} from '@/data/shipment';
+import { FLEET } from '@/data/fleet';
+import { FLAGSHIP, ROLES, XRAY_FIELDS, XRAY_FIX, type Access, type ShipmentId, type XrayFieldKey } from '@/data/shipment';
+import { XRAY_SETS, type XrayDocSpec } from '@/data/xray';
 import { formatStamp } from '@/lib/format';
 import { PALETTE } from '@/lib/palette';
 import { useShipment } from '@/store/shipment';
 import { Button, Chip } from '@/components/hud/ui';
 
-const ORDER: XrayDocId[] = ['ci', 'pl', 'ebl'];
+type DocKey = XrayDocSpec['id'];
 
 interface Link {
   key: string;
@@ -51,7 +42,7 @@ export function DocXrayModal() {
             transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
             className="glass-strong relative flex max-h-[calc(100vh-32px)] w-[1180px] max-w-full flex-col overflow-hidden rounded-[28px]"
           >
-            <XrayBody onClose={() => setXray(false)} />
+            <XrayStudio shipment={FLAGSHIP} onClose={() => setXray(false)} />
           </motion.div>
         </motion.div>
       )}
@@ -59,9 +50,15 @@ export function DocXrayModal() {
   );
 }
 
-function XrayBody({ onClose }: { onClose: () => void }) {
+/**
+ * Field-level reconciliation of a shipment's three trade documents, with live bezier
+ * connectors between matching fields. Used as the X-Ray modal on the Control Tower
+ * and full-page in the Document Vault (`onClose` omitted).
+ */
+export function XrayStudio({ shipment, onClose, onContinue }: { shipment: ShipmentId; onClose?: () => void; onContinue?: () => void }) {
+  const page = !onClose;
   const role = useShipment((s) => s.role);
-  const docsVerified = useShipment((s) => s.docsVerified);
+  const flagshipVerified = useShipment((s) => s.docsVerified);
   const eblHash = useShipment((s) => s.eblHash);
   const resolveDocs = useShipment((s) => s.resolveDocs);
   const setRole = useShipment((s) => s.setRole);
@@ -72,12 +69,19 @@ function XrayBody({ onClose }: { onClose: () => void }) {
   const [links, setLinks] = useState<Link[]>([]);
   const [size, setSize] = useState({ w: 0, h: 0 });
 
-  const access = (id: XrayDocId): Access => DOCUMENTS.find((d) => d.id === id)!.access[role];
+  const set = XRAY_SETS[shipment];
+  const ORDER = set.docs.map((d) => d.id);
+  // Only the flagship carries the seeded discrepancy; the others reconcile cleanly.
+  const seeded = shipment === FLAGSHIP;
+  const docsVerified = seeded ? flagshipVerified : true;
+  const specOf = (id: DocKey) => set.docs.find((d) => d.id === id)!;
+  const access = (id: DocKey): Access => FLEET[shipment].documents.find((d) => d.id === id)?.access[role] ?? 'full';
+  const restrictionOf = (id: DocKey) => FLEET[shipment].documents.find((d) => d.id === id)?.restriction;
   const canAmend = role === 'exporter' || role === 'broker';
   const mismatches = docsVerified ? 0 : 1;
 
-  const valueOf = (doc: XrayDocId, field: XrayFieldKey) =>
-    docsVerified && doc === XRAY_FIX.doc && field === XRAY_FIX.field ? XRAY_FIX.to : XRAY_VALUES[doc][field];
+  const valueOf = (doc: DocKey, field: XrayFieldKey) =>
+    seeded && docsVerified && doc === XRAY_FIX.doc && field === XRAY_FIX.field ? XRAY_FIX.to : specOf(doc).values[field];
 
   // Connectors are measured from the live DOM so they track the cards through the open
   // animation, window resizes and scrolling.
@@ -114,7 +118,7 @@ function XrayBody({ onClose }: { onClose: () => void }) {
     }
     setLinks(out);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role, docsVerified]);
+  }, [role, docsVerified, shipment]);
 
   useLayoutEffect(() => {
     measure();
@@ -138,7 +142,7 @@ function XrayBody({ onClose }: { onClose: () => void }) {
     };
   }, [measure]);
 
-  const register = (doc: XrayDocId, field: XrayFieldKey) => (el: HTMLElement | null) => {
+  const register = (doc: DocKey, field: XrayFieldKey) => (el: HTMLElement | null) => {
     const k = `${doc}:${field}`;
     if (el) rows.current.set(k, el);
     else rows.current.delete(k);
@@ -153,26 +157,31 @@ function XrayBody({ onClose }: { onClose: () => void }) {
 
   return (
     <>
-      <header className="hairline flex items-center gap-3 border-b px-6 py-4">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-cobalt to-[#7c9bff] text-white shadow-[0_6px_16px_-6px_rgb(37_99_235/0.8)]">
+      <header className="hairline flex items-center gap-3 border-b px-6 py-4 max-md:px-4">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-cobalt to-[#7c9bff] text-white shadow-[0_6px_16px_-6px_rgb(37_99_235/0.8)]">
           <FileSearch size={17} />
         </span>
         <div className="min-w-0 flex-1 leading-tight">
-          <div className="text-[16px] font-semibold text-ink">AI Document X-Ray</div>
+          <div className="text-[16px] font-semibold text-ink">{page ? 'AI Visual Diff Studio' : 'AI Document X-Ray'}</div>
           <div className="text-[11.5px] text-muted">
-            Field-level reconciliation across Commercial Invoice, Packing List and e-Bill of Lading · viewing as{' '}
+            <span className="num font-semibold text-ink">{shipment}</span> · {set.docs.map((d) => d.title).join(', ')} · viewing as{' '}
             <span className="font-semibold text-ink">{ROLES[role].label}</span>
           </div>
         </div>
         <Chip tone={mismatches ? 'crimson' : 'emerald'} className="!text-[11px]">
           {mismatches ? `${mismatches} discrepancy` : 'All key fields verified'}
         </Chip>
-        <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-slate-900/5 hover:text-ink" aria-label="Close">
-          <X size={16} />
-        </button>
+        {onClose && (
+          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-muted transition-colors hover:bg-slate-900/5 hover:text-ink" aria-label="Close">
+            <X size={16} />
+          </button>
+        )}
       </header>
 
-      <div ref={stage} className="scroll-quiet relative min-h-0 flex-1 overflow-y-auto bg-gradient-to-b from-[#f6f8fc] to-[#eef3fa] px-6 py-6">
+      <div
+        ref={stage}
+        className={`scroll-quiet relative bg-gradient-to-b from-[#f6f8fc] to-[#eef3fa] px-6 py-6 max-md:px-4 ${page ? '' : 'min-h-0 flex-1 overflow-y-auto'}`}
+      >
         <svg className="pointer-events-none absolute top-0 left-0 z-10" width={size.w} height={size.h} aria-hidden>
           <defs>
             <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
@@ -223,50 +232,42 @@ function XrayBody({ onClose }: { onClose: () => void }) {
         </AnimatePresence>
 
         <div className="relative grid grid-cols-1 gap-6 min-[860px]:grid-cols-3 min-[860px]:gap-[72px]">
-          <PaperCard
-            title="Commercial Invoice"
-            refNo="DPC/EXP/26-27/0482"
-            issuer={SHIPMENT.shipper}
-            access={access('ci')}
-            restriction={DOCUMENTS[0].restriction}
-            accent={PALETTE.cobalt}
-          >
-            <KeyFields doc="ci" register={register} valueOf={valueOf} docsVerified={docsVerified} />
-            <Extra label="Incoterm" value={SHIPMENT.incoterm} />
-            <Extra label="Invoice value" value={`USD ${SHIPMENT.invoiceValueUsd.toLocaleString()}.00`} redacted={access('ci') === 'redacted'} />
-            <Extra label="Unit price" value="USD 129.46 / pc · 1,440 pcs" redacted={access('ci') === 'redacted'} />
-            <Extra label="Net weight" value="11,620 kg" />
-          </PaperCard>
-
-          <PaperCard title="Packing List" refNo="PL-0482" issuer={SHIPMENT.shipper} access={access('pl')} accent={PALETTE.violet}>
-            <KeyFields doc="pl" register={register} valueOf={valueOf} docsVerified={docsVerified} />
-            <Extra label="Packages" value="36 pallets · 1,440 pcs" />
-            <Extra label="Pallet tare" value="36 × 34.2 kg" />
-            <Extra label="Net weight" value="11,620 kg" />
-            <Extra label="Dimensions" value="1.2 × 1.0 × 1.05 m" />
-          </PaperCard>
-
-          <PaperCard
-            title="e-Bill of Lading"
-            refNo="KMOL-047W-0482"
-            issuer="Arabian Gateway Logistics (as agent)"
-            access={access('ebl')}
-            restriction={DOCUMENTS[2].restriction}
-            accent={PALETTE.sky}
-            stamp={docsVerified && eblHash ? <ShaStamp hash={eblHash} /> : null}
-          >
-            <KeyFields doc="ebl" register={register} valueOf={valueOf} docsVerified={docsVerified} />
-            <Extra label="Vessel / voyage" value={`${SHIPMENT.vessel} ${SHIPMENT.voyage}`} />
-            <Extra label="POL → POD" value="INNSA → NLRTM" />
-            <Extra label="Seal" value={SHIPMENT.seal} />
-            <Extra label="Freight" value="Prepaid" />
-          </PaperCard>
+          {set.docs.map((d) => {
+            const a = access(d.id);
+            return (
+              <PaperCard
+                key={d.id}
+                title={d.title}
+                refNo={d.ref}
+                issuer={d.issuer}
+                access={a}
+                restriction={restrictionOf(d.id)}
+                accent={d.accent}
+                stamp={seeded && d.id === 'ebl' && docsVerified && eblHash ? <ShaStamp hash={eblHash} /> : null}
+              >
+                <KeyFields doc={d} labels={set.fieldLabels} register={register} valueOf={valueOf} seeded={seeded} docsVerified={docsVerified} />
+                {d.extras.map((x) => (
+                  <Extra key={x.label} label={x.label} value={x.value} redacted={x.pricing && a === 'redacted'} />
+                ))}
+              </PaperCard>
+            );
+          })}
         </div>
       </div>
 
       <footer className="hairline flex flex-wrap items-center gap-4 border-t bg-white/70 px-6 py-4">
         <AnimatePresence mode="wait" initial={false}>
-          {!docsVerified ? (
+          {!seeded ? (
+            <motion.div key="clean" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex min-w-0 flex-1 items-center gap-3">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-emerald/10 text-emerald">
+                <BadgeCheck size={16} />
+              </span>
+              <div className="text-[12px] leading-snug">
+                <div className="font-semibold text-ink">All {XRAY_FIELDS.length} key fields reconcile across the three documents.</div>
+                <div className="text-[11px] text-muted">Checked against the {FLEET[shipment].documents.length} documents in the vault. Nothing for the CHA to amend.</div>
+              </div>
+            </motion.div>
+          ) : !docsVerified ? (
             <motion.div key="issue" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex min-w-0 flex-1 items-start gap-3">
               <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-cobalt/10 text-cobalt">
                 <Sparkles size={15} />
@@ -297,7 +298,7 @@ function XrayBody({ onClose }: { onClose: () => void }) {
           )}
         </AnimatePresence>
 
-        {!docsVerified ? (
+        {!seeded ? null : !docsVerified ? (
           canAmend ? (
             <Button tone="primary" onClick={resolve} disabled={scanning} className="!h-10 !px-4">
               {scanning ? <ScanLine size={15} className="animate-pulse" /> : <Sparkles size={15} />}
@@ -317,7 +318,8 @@ function XrayBody({ onClose }: { onClose: () => void }) {
             className="!h-10 !px-4"
             onClick={() => {
               setRole('broker');
-              onClose();
+              onClose?.();
+              onContinue?.();
             }}
           >
             Continue to Customs Clearance <ArrowRight size={14} />
@@ -392,35 +394,42 @@ function PaperCard({
 
 function KeyFields({
   doc,
+  labels,
   register,
   valueOf,
+  seeded,
   docsVerified,
 }: {
-  doc: XrayDocId;
-  register: (d: XrayDocId, f: XrayFieldKey) => (el: HTMLElement | null) => void;
-  valueOf: (d: XrayDocId, f: XrayFieldKey) => string;
+  doc: XrayDocSpec;
+  labels: Record<XrayFieldKey, string>;
+  register: (d: DocKey, f: XrayFieldKey) => (el: HTMLElement | null) => void;
+  valueOf: (d: DocKey, f: XrayFieldKey) => string;
+  seeded: boolean;
   docsVerified: boolean;
 }) {
   return (
     <div className="mb-3 space-y-1">
-      {XRAY_LAYOUT[doc].map((key) => {
-        const f = XRAY_FIELDS.find((x) => x.key === key)!;
-        const value = valueOf(doc, f.key);
-        const bad = !docsVerified && f.key === XRAY_FIX.field && (doc === 'ci' || doc === 'pl');
-        const fixed = docsVerified && doc === XRAY_FIX.doc && f.key === XRAY_FIX.field;
+      {doc.order.map((key) => {
+        const value = valueOf(doc.id, key);
+        const bad = seeded && !docsVerified && key === XRAY_FIX.field && (doc.id === 'ci' || doc.id === 'pl');
+        const fixed = seeded && docsVerified && doc.id === XRAY_FIX.doc && key === XRAY_FIX.field;
         return (
           <motion.div
-            key={f.key}
-            ref={register(doc, f.key)}
+            key={key}
+            ref={register(doc.id, key)}
             className="relative rounded-lg px-2.5 py-1.5"
             animate={{
               backgroundColor: bad ? 'rgba(220,38,38,0.07)' : fixed ? 'rgba(5,150,105,0.08)' : 'rgba(15,23,42,0.025)',
-              boxShadow: bad ? 'inset 0 0 0 1px rgba(220,38,38,0.35)' : fixed ? 'inset 0 0 0 1px rgba(5,150,105,0.35)' : 'inset 0 0 0 1px rgba(15,23,42,0.05)',
+              boxShadow: bad
+                ? ['inset 0 0 0 1px rgba(220,38,38,0.3), 0 0 0 0px rgba(220,38,38,0)', 'inset 0 0 0 1px rgba(220,38,38,0.55), 0 0 0 4px rgba(220,38,38,0.10)', 'inset 0 0 0 1px rgba(220,38,38,0.3), 0 0 0 0px rgba(220,38,38,0)']
+                : fixed
+                  ? 'inset 0 0 0 1px rgba(5,150,105,0.35)'
+                  : 'inset 0 0 0 1px rgba(15,23,42,0.05)',
             }}
-            transition={{ duration: 0.4 }}
+            transition={bad ? { boxShadow: { duration: 1.6, repeat: Infinity }, backgroundColor: { duration: 0.4 } } : { duration: 0.4 }}
           >
-            <div className="text-[9.5px] font-semibold tracking-[0.1em] text-subtle uppercase">{f.label}</div>
-            <div className={`truncate text-[12.5px] font-semibold ${f.key === 'consignee' ? '' : 'num'}`} style={{ color: bad ? PALETTE.crimson : PALETTE.ink }}>
+            <div className="text-[9.5px] font-semibold tracking-[0.1em] text-subtle uppercase">{labels[key]}</div>
+            <div className={`truncate text-[12.5px] font-semibold ${key === 'consignee' ? '' : 'num'}`} style={{ color: bad ? PALETTE.crimson : PALETTE.ink }}>
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.span
                   key={value}

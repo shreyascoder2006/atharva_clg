@@ -61,6 +61,7 @@ export function CameraRig() {
   const selected = useShipment((s) => s.selected);
   const nonce = useShipment((s) => s.flightNonce);
   const twin = useShipment((s) => s.twin);
+  const focus = useShipment((s) => s.focus);
 
   const fly = (pos: Vector3, target: Vector3, surface: boolean, onDone?: () => void, minDuration = 1.5) => {
     const c = controlsRef.current;
@@ -156,6 +157,13 @@ export function CameraRig() {
     const { pos, target } = zonePose(z);
     fly(pos, target, z.target !== null, undefined, nonce === 0 ? 2.2 : 1.5);
   }, [role, nonce, selected]);
+
+  // Watch-list shipment tracked from the Shipments dashboard -> fly to its corridor.
+  useEffect(() => {
+    if (!focus || useShipment.getState().twin !== 'closed') return;
+    const { pos, target } = zonePose({ cam: focus.cam, camR: focus.camR, target: null });
+    fly(pos, target, false);
+  }, [focus]);
 
   // Dev-only: fly to any surface point, for the smoke test and for inspecting dioramas.
   useEffect(() => {

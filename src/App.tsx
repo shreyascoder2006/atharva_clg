@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 
 import { GlobeScene } from '@/components/globe/GlobeScene';
@@ -10,12 +10,34 @@ import { RoleSwitcher, ShipmentCard, Toolbar } from '@/components/hud/TopBar';
 import { WorkspacePanel } from '@/components/hud/WorkspacePanel';
 import { GlobeOverlay } from '@/components/overlay/GlobeOverlay';
 import { DriverPhone } from '@/components/phone/DriverPhone';
+import { railOffset, useIsMobile } from '@/components/shell/layout';
+import { Sidebar } from '@/components/shell/Sidebar';
 import { DocXrayModal } from '@/components/xray/DocXrayModal';
 import { ROLE_ORDER, ULIP } from '@/data/shipment';
+import { pathForView, VIEWS, viewFromPath, type ViewId } from '@/lib/routes';
 import { useShipment } from '@/store/shipment';
 
 // The twin has its own Canvas, grid and orbit controls: load it on the first dive.
 const CargoTwinModal = lazy(() => import('@/components/twin/CargoTwinModal').then((m) => ({ default: m.CargoTwinModal })));
+
+// Each dashboard is its own chunk, prefetched once the globe is up.
+const loaders = {
+  shipments: () => import('@/components/pages/ShipmentsPage'),
+  documents: () => import('@/components/pages/DocumentsPage'),
+  partners: () => import('@/components/pages/PartnersPage'),
+  comms: () => import('@/components/pages/CommsPage'),
+  financials: () => import('@/components/pages/FinancialsPage'),
+  integrations: () => import('@/components/pages/IntegrationsPage'),
+} satisfies Record<Exclude<ViewId, 'tower'>, unknown>;
+
+const PAGES = {
+  shipments: lazy(loaders.shipments),
+  documents: lazy(loaders.documents),
+  partners: lazy(loaders.partners),
+  comms: lazy(loaders.comms),
+  financials: lazy(loaders.financials),
+  integrations: lazy(loaders.integrations),
+};
 
 /** Connector chatter: every few seconds one ULIP API reports in and pulses its beam. */
 function useUlipStream() {
@@ -48,12 +70,53 @@ function useResponsivePanel() {
   }, []);
 }
 
+/** Keeps the store's view and the address bar in step, both ways. */
+function useRouteSync() {
+  useEffect(() => {
+    const onPop = () => useShipment.getState().setView(viewFromPath(window.location.pathname));
+    window.addEventListener('popstate', onPop);
+    // Normalise unknown paths to the Control Tower's.
+    const v = useShipment.getState().view;
+    if (window.location.pathname !== pathForView(v)) window.history.replaceState(null, '', pathForView(v) + window.location.search);
+    const unsub = useShipment.subscribe((s, prev) => {
+      if (s.view === prev.view) return;
+      const path = pathForView(s.view);
+      if (window.location.pathname !== path) window.history.pushState(null, '', path + window.location.search);
+      document.title = s.view === 'tower' ? 'One Shipment · One Platform' : `${VIEWS.find((x) => x.id === s.view)?.label} · One Platform`;
+    });
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      unsub();
+    };
+  }, []);
+}
+
+function usePrefetchPages() {
+  useEffect(() => {
+    const run = () => Object.values(loaders).forEach((load) => void load());
+    const id = window.setTimeout(run, 2500);
+    return () => window.clearTimeout(id);
+  }, []);
+}
+
 function useShortcuts() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
-      if (el.closest('input, textarea, [role="slider"]') || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (el.closest('input, textarea, select, [role="slider"], [contenteditable="true"]') || e.metaKey || e.ctrlKey) return;
       const s = useShipment.getState();
+      // Alt/Option + 1–7 jumps between workspaces. e.code, because Option+digit types a symbol on macOS.
+      const digit = /^Digit([1-7])$/.exec(e.code);
+      if (e.altKey && digit) {
+        e.preventDefault();
+        s.setView(VIEWS[Number(digit[1]) - 1].id);
+        return;
+      }
+      if (e.altKey) return;
+      if (e.key === '[') {
+        s.toggleNav();
+        return;
+      }
       if (e.key === 'Escape') {
         if (s.xrayOpen) s.setXray(false);
         else if (s.twin !== 'closed') s.closeTwin();
@@ -70,9 +133,11 @@ function useShortcuts() {
 
 export default function App() {
   const tick = useShipment((s) => s.tick);
-  const disruption = useShipment((s) => s.disruption);
-  const twin = useShipment((s) => s.twin);
+  const view = useShipment((s) => s.view);
+  const collapsed = useShipment((s) => s.navCollapsed);
   const twinLoaded = useShipment((s) => s.twinLoaded);
+  const mobile = useIsMobile();
+  const tower = view === 'tower';
 
   useEffect(() => {
     const id = setInterval(tick, 1000);
@@ -81,21 +146,105 @@ export default function App() {
   useUlipStream();
   useShortcuts();
   useResponsivePanel();
+  useRouteSync();
+  usePrefetchPages();
 
   return (
-    <div className="relative h-full w-full overflow-hidden">
+    <div className="relative h-full w-full overflow-hidden" style={{ '--rail': `${railOffset(collapsed, mobile)}px` } as CSSProperties}>
+      {/* Control Tower. Never unmounted: hidden with CSS and its render loop paused, so
+          coming back is instant, with the camera and scene exactly as they were. */}
+      <motion.div
+        className="absolute inset-0"
+        initial={false}
+        animate={{ opacity: tower ? 1 : 0, scale: tower ? 1 : 0.985 }}
+        transition={{ duration: tower ? 0.42 : 0.26, ease: [0.16, 1, 0.3, 1] }}
+        style={{ pointerEvents: tower ? 'auto' : 'none' }}
+        aria-hidden={!tower}
+        inert={!tower}
+      >
+        <ControlTower active={tower} />
+      </motion.div>
+
+      {/* Dashboards, right of the rail. */}
+      <div className="absolute inset-y-0 right-0 left-[var(--rail)] transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+        <AnimatePresence initial={false}>
+          {!tower && (
+            <motion.main
+              key={view}
+              className="absolute inset-0 bg-[#F4F7FB] bg-[radial-gradient(90%_60%_at_70%_0%,#ffffff_0%,rgb(244_247_251/0)_70%)]"
+              initial={{ opacity: 0, y: 14 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] } }}
+              exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
+            >
+              <Suspense fallback={<PageSkeleton />}>
+                <Page view={view} />
+              </Suspense>
+            </motion.main>
+          )}
+        </AnimatePresence>
+      </div>
+
+      <Sidebar />
+
+      {/* Toasts float above whichever workspace is showing. */}
+      <div
+        className={
+          tower
+            ? 'pointer-events-none absolute top-[72px] right-[416px] left-[calc(var(--rail)+372px)] z-40 flex justify-center max-[1099px]:right-4 max-md:top-[124px] max-md:left-[calc(var(--rail)+16px)]'
+            : 'pointer-events-none absolute right-6 bottom-6 z-40 flex justify-end max-md:right-4 max-md:left-[calc(var(--rail)+16px)]'
+        }
+      >
+        <Toasts />
+      </div>
+
+      <DocXrayModal />
+      {twinLoaded && (
+        <Suspense fallback={null}>
+          <CargoTwinModal />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+function Page({ view }: { view: Exclude<ViewId, 'tower'> }) {
+  const C = PAGES[view];
+  return <C />;
+}
+
+function PageSkeleton() {
+  return (
+    <div className="mx-auto max-w-[1480px] px-6 pt-6">
+      <div className="h-3 w-32 animate-pulse rounded bg-slate-900/[0.06]" />
+      <div className="mt-3 h-6 w-80 animate-pulse rounded bg-slate-900/[0.06]" />
+      <div className="mt-6 grid grid-cols-4 gap-4">
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className="h-[120px] animate-pulse rounded-[20px] bg-white/70" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function ControlTower({ active }: { active: boolean }) {
+  const disruption = useShipment((s) => s.disruption);
+  const twin = useShipment((s) => s.twin);
+  // An open rail takes 168px from the top bar: drop the inactive role labels.
+  const railOpen = !useShipment((s) => s.navCollapsed);
+  return (
+    <>
       <motion.div
         className="absolute inset-0"
         animate={{ scale: twin === 'open' ? 1.04 : 1, filter: twin === 'open' ? 'blur(6px)' : 'blur(0px)' }}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
-        <GlobeScene />
+        <GlobeScene active={active} />
         <GlobeOverlay />
       </motion.div>
 
       <div className="pointer-events-none absolute inset-0 z-10">
-        {/* Left column: shipment summary, lens dock, and lens card or Co-Pilot. */}
-        <div className="absolute top-4 bottom-[200px] left-4 flex flex-col gap-3 max-md:top-[68px] max-sm:bottom-[132px]">
+        {/* Left column, right of the rail: shipment summary, lens dock, and the sidebar card or Co-Pilot. */}
+        <div className="absolute top-4 bottom-[200px] left-[calc(var(--rail)+16px)] flex flex-col gap-3 transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-md:top-[68px] max-sm:bottom-[132px]">
           <ShipmentCard collapsed={!!disruption} />
           <div className="flex min-h-0 items-start gap-2">
             <LensDock />
@@ -114,30 +263,21 @@ export default function App() {
         </div>
 
         {/* Top bar: the role switcher centres in whatever space the toolbar leaves. */}
-        <div className="absolute top-4 right-4 left-[372px] flex items-start gap-3 max-md:left-4">
+        <div className="absolute top-4 right-4 left-[calc(var(--rail)+372px)] flex items-start gap-3 transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-md:left-[calc(var(--rail)+16px)]">
           <div className="flex min-w-0 flex-1 justify-center">
-            <RoleSwitcher />
+            <RoleSwitcher compact={railOpen} />
           </div>
           <Toolbar />
-        </div>
-        <div className="absolute top-[72px] right-[416px] left-[372px] flex justify-center max-[1099px]:right-4 max-md:top-[124px] max-md:left-4">
-          <Toasts />
         </div>
 
         <WorkspacePanel />
 
-        <div className="absolute right-[416px] bottom-4 left-[84px] max-[1099px]:right-4">
+        <div className="absolute right-[416px] bottom-4 left-[calc(var(--rail)+84px)] transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-[1099px]:right-4">
           <Timeline />
         </div>
       </div>
 
       <DriverPhone />
-      <DocXrayModal />
-      {twinLoaded && (
-        <Suspense fallback={null}>
-          <CargoTwinModal />
-        </Suspense>
-      )}
-    </div>
+    </>
   );
 }

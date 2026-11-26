@@ -46,6 +46,7 @@ const RISK = new Color(PALETTE.amber);
 const CARBON_LO = new Color(PALETTE.emerald);
 const CARBON_HI = new Color(PALETTE.amber);
 const AMBIENT = new Color('#4F6FA8');
+const FOCUSED = new Color('#2563EB');
 
 const REVEAL_MS = 1700;
 /** Opacity of a shipment that is on the network but not in focus. */
@@ -260,6 +261,8 @@ function AmbientArc({ routeId, seed }: { routeId: RouteId; seed: number }) {
     return makeCoreMaterial(u);
   }, [routeId, seed]);
   const shown = useRef(1);
+  // Lit up while a watch-list shipment on this corridor is being tracked.
+  const lit = useRef(0);
 
   useEffect(() => () => material.dispose(), [material]);
 
@@ -269,9 +272,13 @@ function AmbientArc({ routeId, seed }: { routeId: RouteId; seed: number }) {
     camera.getWorldPosition(u.uCam.value);
     u.uWorldPerPx.value = frame.worldPerPx;
     u.uTime.value = clock.elapsedTime;
-    u.uPx.value = 0.72 * lerp(1, 0.6, frame.lod.thin);
-    shown.current += ((st.showNetwork ? 1 : 0) - shown.current) * (1 - Math.exp(-dt * 6));
-    u.uOpacity.value = BACKGROUND_OPACITY * shown.current;
+    const k = 1 - Math.exp(-dt * 6);
+    lit.current += ((st.focus?.routeId === routeId ? 1 : 0) - lit.current) * k;
+    u.uPx.value = lerp(0.72, 1.5, lit.current) * lerp(1, 0.6, frame.lod.thin);
+    u.uColor.value.copy(AMBIENT).lerp(FOCUSED, lit.current);
+    u.uCometGain.value = lerp(0.55, 1.4, lit.current);
+    shown.current += ((st.showNetwork ? 1 : 0) - shown.current) * k;
+    u.uOpacity.value = lerp(BACKGROUND_OPACITY, 0.95, lit.current) * shown.current;
     u.uDim.value += (lensDim(st.lens) - u.uDim.value) * 0.12;
   });
 

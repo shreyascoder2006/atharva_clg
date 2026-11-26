@@ -4,6 +4,8 @@ A light-themed 3D command centre for **Digital Logistics Connectivity & Collabor
 
 Two more live shipments share the globe with it: **SHP-2611-0519**, a cold-chain air shipment from Bengaluru to Frankfurt, and **SHP-2611-0494**, a sea shipment from Surat via Mundra to Jebel Ali that is under a customs hold. Four ambient trade corridors also run in the background.
 
+The app is a multi-dashboard operating system. A persistent left rail switches between seven full-screen workspaces, and all of them run on one client-side store, so an action in one shows up in every other immediately.
+
 It is built on the `fusion_earth` globe. The original Fibonacci land-dot sphere, atmosphere and camera controls are kept and restyled for an architectural light studio, then extended with a logistics spatial layer. There is no backend: every interaction runs on a pre-seeded client-side store.
 
 ## Run it
@@ -29,6 +31,22 @@ Open http://localhost:5173.
 | `npm test` | Vitest unit tests for the schedule engine, ISO 6346 and SHA-256 |
 | `npm run gen:land` | Regenerates `src/data/land-paths.json` and `src/data/vectors.json` from Natural Earth (dev dependency) |
 | `npm run gen:dots` | Regenerates the original globe dot matrix |
+
+## Workspaces
+
+The rail is 72px of icons, or 240px with labels (toggle with the button at the bottom or `[`). It carries live badges: a red dot on Documents while a mismatch is open, the unread count on Comms, an amber dot on Financials while demurrage accrues, and a crimson pulse on the Control Tower during a disruption. The role you are acting as sits at the bottom; click it to switch.
+
+| # | Workspace | URL | What it does |
+| --- | --- | --- | --- |
+| 1 | **Control Tower** | `/` | The 3D multi-route globe, role HUD, 4D timeline, disruption simulator and driver phone. |
+| 2 | **Shipments & Fleet Command** | `/shipments` | KPI strip with sparklines (active, 94.2% on-time, at-risk, cargo value). Six shipments as a table or corridor cards, each with a multi-modal progress bar, status, CO₂e, baton holder and **Track on 3D Globe →**. |
+| 3 | **Document Vault & AI X-Ray Studio** | `/documents` | Invoice, Packing List and e-BL side by side with live bezier connectors. The seeded discrepancy pulses crimson until you click **Resolve with AI & Re-Sync**. Below: an RBAC document matrix with OCR confidence, and the e-BL chain of custody with real, verifiable SHA-256 hashes. |
+| 4 | **Partner Marketplace & Quotes** | `/partners` | Four forwarder bids with Best Value / Fastest Customs / Lowest Carbon / Most Reliable badges, radial gauges and a head-to-head scorecard. **Assign Partner** swaps the forwarder everywhere: HUD, escrow payee, ledger, comms. |
+| 5 | **Unified Comms & Escalation Hub** | `/comms` | Channels per shipment plus `#Customs-Alerts`. Role-badged threads carry milestone, document, escrow and ETA chips. The composer posts as the active role and gets a live answer; **Escalate** pings the baton holder with an SLA. The right column is a mini-brief with pinned documents and driver-app updates. |
+| 6 | **Financials, Demurrage & Escrow** | `/financials` | Live demurrage exposure gauge, freight spend, escrow locked vs released, cost per kg. An escrow pipeline (Gate-In Proof → Customs LEO → Shipped on Board → e-BL Surrender) flips Locked → Verified → Released as milestones land. Cost breakdown chart and a filterable settlement ledger. |
+| 7 | **Sustainability & ULIP Hub** | `/integrations` | Per-leg GLEC CO₂e, fleet emissions by mode, green-corridor savings, and a previewable **Export EU CBAM Certificate** (downloads hashed JSON). The ULIP topology shows FASTag, ICEGATE, VAHAN, JNPT Port Gate and e-Way Bill with live latency, 30-day uptime and a JSON webhook stream. |
+
+Try the sync: resolve the document mismatch in `/documents`, assign a partner in `/partners`, post in `/comms` or simulate a disruption on the globe, then visit the other workspaces.
 
 ## A two-minute demo
 
@@ -59,7 +77,7 @@ Open http://localhost:5173.
 
     Each has piers, colour-coded container stacks, gantry cranes with moving trolleys, water ripples and micro-labels (`Berth 4 · JNPT`, `Gate-In Lane`, `Customs Yard`).
 
-Shortcuts: `1`–`4` switch roles and `Esc` closes overlays. In the timeline, `←`/`→` (with `Shift` for 6h steps), `Home`/`End`, and `L` returns to live.
+Shortcuts: `Alt`/`Option` + `1`–`7` jumps between workspaces, `[` toggles the rail, `1`–`4` switch roles and `Esc` closes overlays. In the timeline, `←`/`→` (with `Shift` for 6h steps), `Home`/`End`, and `L` returns to live.
 
 ## Architecture
 
@@ -74,20 +92,33 @@ src/
   lib/schedule.ts           Pure time model: legs, cargo position at any hour, milestone
                             status, baton holder, escrow; unit-tested
   lib/route.ts              Dense route polylines with elevated hops between chokepoints
-  store/shipment.ts         Single Zustand store + actions; useSchedule / usePlan hooks
+  data/partners.ts          Marketplace partners, per-shipment quotes, badge logic
+  data/portfolio.ts         Watch-list shipments on the ambient corridors, KPI trends
+  data/comms.ts             Channels and the seeded conversation history
+  data/finance.ts           Landed-cost lines, static invoices, FX
+  data/xray.ts              Per-shipment document sets for the diff studio
+  lib/routes.ts             The seven workspaces and their URLs
+  store/shipment.ts         Single Zustand store + actions: shipment workflow, navigation,
+                            partner assignments, comms; useSchedule / usePlan hooks
   components/globe/         R3F scene: restyled globe core with LOD surface shader, camera
                             rig, corridor arcs, vehicles, route picking, vector lines,
                             port dioramas, sonar, pillars, ULIP pulse, anchor projector
   components/overlay/       DOM labels and the telemetry pin, pinned to 3D anchors
   components/hud/           Top bar, role switcher, workspace panel, lens dock/cards,
                             timeline + escrow, Co-Pilot, toasts
-  components/xray/          Document X-Ray modal
+  components/shell/          Navigation rail and layout constants
+  components/dash/           Dashboard kit (page frame, glass cards, gauges), portfolio hook,
+                            multi-modal progress track, document status
+  components/pages/          The six dashboards, each lazy-loaded as its own chunk
+  components/xray/          Document X-Ray studio (modal on the globe, full page in /documents)
   components/twin/          Orbital-to-container cargo twin (lazy-loaded)
   components/phone/         Driver magic-link simulator
 ```
 
 Design decisions that matter:
 
+- **One store, seven views.** Navigation, partner assignments and comms live in the same Zustand store as the shipment workflow. Existing actions (resolve documents, gate-in, LEO, disruptions, recoveries) also post into the comms channels, so every dashboard reads the same facts.
+- **The globe is never unmounted.** Leaving the Control Tower fades it out and sets the R3F `frameloop` to `never`, so a dashboard costs no GPU time and coming back is instant. On resume the clock delta is reset, so a camera flight queued from a dashboard ("Track on 3D Globe") plays out on screen instead of snapping to its end.
 - **One schedule, many views.** The globe, pin, timeline, escrow, baton, KPIs and Co-Pilot all derive from `buildSchedule()`, so a disruption or recovery can never leave two views disagreeing. The Co-Pilot runs each recovery option through the same function, which means the trade-offs on the card are exactly what the arc shows after execution.
 - **The camera moves; the planet stays put.** Geography is fixed in world space, flights travel along great circles with an altitude bump, and a screen-space `setViewOffset` keeps the globe centred in the space the HUD leaves free.
 - **Screen-space tubes.** The arcs are re-inflated in the vertex shader to a pixel width, and the shadow pass uses the same inflation. Routes stay crisp from orbit down to the JNPT gate, and their shadows match.
@@ -102,4 +133,7 @@ Design decisions that matter:
 - Demurrage accrues on a demo clock (1 s = 1 h) so the counter visibly moves. Everything else runs on real time from page load.
 - The land relief is procedural noise shaped by the land mask, not a real elevation model. Container yards and cranes are stylised, not surveyed layouts.
 - Zoom uses the existing `camera-controls` rig, damped through `smoothTime`, rather than OrbitControls. Orbit and dolly speeds scale with altitude, and the minimum distance stops 16–20 km above the surface.
+- Partner names (Maersk India, BlueDart Global, Allcargo Multimodal, DHL Global Forwarding) are used for illustration only. Their quotes, scores, contacts and volumes are invented demo data, and the marketplace page says so.
+- The CBAM statement is a voluntary embedded-emissions statement: CN 8708 is not in CBAM Annex I. Embedded-emission factors are illustrative; transport CO₂e comes from the schedule engine.
+- Routes are real URLs (`/documents`, `/comms`, …). The dev server and `vite preview` fall back to `index.html`; a static host needs the same SPA fallback configured.
 - The original CLIMATRIX climate modules are preserved verbatim in the first commit of this branch.

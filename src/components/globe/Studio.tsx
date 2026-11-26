@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { CameraControlsImpl } from '@react-three/drei';
 import { DirectionalLight, Object3D, PerspectiveCamera, Vector3 } from 'three';
 
+import { railOffset } from '@/components/shell/layout';
 import { useShipment } from '@/store/shipment';
 
 const KEY_DIR = new Vector3(-0.62, 0.72, 0.88).normalize();
@@ -95,17 +96,20 @@ export function ViewOffset() {
   const camera = useThree((s) => s.camera) as PerspectiveCamera;
   const size = useThree((s) => s.size);
   const panelOpen = useShipment((s) => s.panelOpen);
+  const navCollapsed = useShipment((s) => s.navCollapsed);
   const current = useRef({ x: 0, y: 0 });
 
   const target = useMemo(() => {
     const wide = size.width >= 1100;
     const right = wide && panelOpen ? 404 : 0;
-    // The left column (shipment card, lens dock and card) is ~372px wide.
-    const left = wide ? 340 : 0;
+    // The navigation rail, plus the left HUD column (shipment card, lens dock and
+    // card, ~372px) on wide screens.
+    const rail = railOffset(navCollapsed, size.width < 768);
+    const left = rail + (wide ? 340 : 0);
     const top = 70;
     const bottom = size.width >= 760 ? 200 : 120;
     return { x: (right - left) / 2, y: (bottom - top) / 2 };
-  }, [size.width, panelOpen]);
+  }, [size.width, panelOpen, navCollapsed]);
 
   useFrame((_, dt) => {
     const c = current.current;

@@ -24,9 +24,10 @@ export const PALETTE = {
   crimson: '#DC2626',
   violet: '#7C3AED',
   sky: '#0284C7',
+  indigo: '#4F46E5',
 } as const;
 
-export type Tone = 'cobalt' | 'emerald' | 'amber' | 'crimson' | 'violet' | 'sky' | 'slate';
+export type Tone = 'cobalt' | 'emerald' | 'amber' | 'crimson' | 'violet' | 'sky' | 'indigo' | 'slate';
 
 export const TONE_HEX: Record<Tone, string> = {
   cobalt: PALETTE.cobalt,
@@ -35,6 +36,7 @@ export const TONE_HEX: Record<Tone, string> = {
   crimson: PALETTE.crimson,
   violet: PALETTE.violet,
   sky: PALETTE.sky,
+  indigo: PALETTE.indigo,
   slate: PALETTE.muted,
 };
 

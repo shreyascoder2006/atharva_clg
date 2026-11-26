@@ -42,7 +42,7 @@ import {
 import { formatAgo, formatDuration, formatKg, formatStamp, formatUsd } from '@/lib/format';
 import { TONE_HEX, type Tone } from '@/lib/palette';
 import { batonAt, escrowStatus, milestoneStatuses, type EscrowStatus, type Schedule } from '@/lib/schedule';
-import { useSchedule, useShipment, type FeedItem } from '@/store/shipment';
+import { partyOf, useSchedule, useShipment, type FeedItem } from '@/store/shipment';
 import { FleetWorkspace } from './FleetWorkspace';
 import { accessHint } from './panelUtils';
 import { Button, Chip, Dot, Eyebrow, RoleAvatar } from './ui';
@@ -121,7 +121,8 @@ function FlagshipBody({ role }: { role: Role }) {
 function PanelHeader({ role, onClose }: { role: Role; onClose: () => void }) {
   const meta = ROLES[role];
   const selected = useShipment((s) => s.selected);
-  const party = FLEET[selected].parties[role];
+  const assignments = useShipment((s) => s.assignments);
+  const party = partyOf(assignments, selected, role);
   return (
     <div className="hairline flex items-center gap-3 border-b px-4 py-3">
       <AnimatePresence mode="popLayout" initial={false}>

@@ -81,20 +81,27 @@ A light-themed command centre that connects the Exporter, Freight Forwarder, Cus
   - `PortDioramas` builds JNPT, Mundra, Rotterdam, Jebel Ali and Suez.
 - **Camera.** The minimum distance is lowered to terminal level. Orbit and dolly speeds scale with altitude.
 
+### Phase 8: Multi-dashboard operating system
+- **Shell.** A collapsible navigation rail (72/240px) with an animated active pill, live badges and the active role. Routing is a store field kept in step with `history`. The Control Tower stays mounted, hidden with CSS, with its render loop paused off-route. Its HUD is offset by the rail width.
+- **Dashboards.** Six lazily loaded pages on a shared kit: Shipments & Fleet Command, the Document Vault & AI X-Ray Studio (the X-Ray modal generalised to any shipment), the Partner Marketplace, the Comms & Escalation Hub, Financials (Demurrage & Escrow), and Sustainability & ULIP.
+- **State.** New store slices for navigation, corridor focus, partner assignments and comms. Workflow actions now also post to comms. `partyOf` and `payeeOf` resolve reassigned forwarders for every view.
+
 ## Status
 
-All seven phases are complete.
+All eight phases are complete.
 
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 errors, 0 warnings |
-| `npm test` | 20/20 passing (schedule engine incl. the fleet schedules, disruptions/recoveries, ISO 6346, SHA-256) |
-| `npm run build` | passes; vendors split into `three`, `r3f`, `motion` and `vendor` chunks; twin and coastline vectors lazy-loaded |
-| Dev-server smoke (Playwright, 42 UI steps: every role, lens, disruption, recovery, X-Ray, phone, twin, scrub and reset, plus shipment selection from the sidebar and by clicking a route on the globe, the 0494 RMS hold, the corridor toggle and wheel-zoom to terminal level) | 0 console errors, 0 console warnings |
+| `npm test` | 32/32 passing (schedule engine, fleet schedules, ISO 6346, SHA-256, routes, marketplace badges, party reassignment, comms unread state, data integrity) |
+| `npm run build` | passes; vendors split into `three`, `r3f`, `motion` and `vendor`; twin, coastline vectors and each dashboard lazy-loaded |
+| Dashboard OS smoke (Playwright, 27 checks: every route, back button, globe pause/resume, document resolve, partner assignment, comms posting as a role, disruption reaching Financials and Comms, Track on 3D Globe for live and watch-list shipments, rail toggle, keyboard navigation, mobile) | all pass · 0 console errors, 0 warnings |
+| Control Tower smoke (Playwright, 42 UI steps across every role, lens, disruption, recovery, X-Ray, phone, twin, multi-route selection and zoom) | re-run in progress at this commit; result recorded in the next commit |
 
 The verification surfaced and fixed these deviations from the plan:
 - drei `<Html>` was replaced by a single-root anchor projector. React 19 logs an error when `<Html>` unmounts its per-label root.
 - `PCFSoftShadowMap` was removed in three r183+. The scene uses `shadows="percentage"` with `shadow.radius`.
 - `THREE.Clock` is deprecated in three r183+ and constructed inside R3F 9. Exactly that one warning is filtered through three's `setConsoleFunction`.
 - Phase 7: sampling all six high-resolution land patches on every pixel halved the software-rendered frame rate. Patches are now switched by a uniform weight (altitude and facing), and anisotropy is capped at 8x.
+- Phase 8: a fixed-position dialog inside the page transition wrapper (which is transformed) was positioned against the wrapper, not the viewport; the CBAM dialog is portalled to `document.body`.

@@ -1,15 +1,14 @@
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import clsx from 'clsx';
 
-import { FLEET } from '@/data/fleet';
-import { ROLES, type Role } from '@/data/shipment';
-import { useShipment } from '@/store/shipment';
+import { ROLES, type Role, type ShipmentId } from '@/data/shipment';
+import { partyOf, useShipment } from '@/store/shipment';
 import { TONE_HEX, type Tone } from '@/lib/palette';
 
-/** Initials of the party playing `role` on the selected shipment. */
-export function RoleAvatar({ role, size = 24, ring = false }: { role: Role; size?: number; ring?: boolean }) {
+/** Initials of the party playing `role` on a shipment (the selected one by default). */
+export function RoleAvatar({ role, size = 24, ring = false, shipment }: { role: Role; size?: number; ring?: boolean; shipment?: ShipmentId }) {
   const meta = ROLES[role];
-  const initials = useShipment((s) => FLEET[s.selected].parties[role].initials);
+  const initials = useShipment((s) => partyOf(s.assignments, shipment ?? s.selected, role).initials);
   const hex = TONE_HEX[meta.tone];
   return (
     <span

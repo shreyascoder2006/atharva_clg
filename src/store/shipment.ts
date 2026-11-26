@@ -2,7 +2,10 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
-import { FLEET } from '@/data/fleet';
+import { CHANNEL_BY_ID, CHANNEL_FOR, CHANNELS, SEED_MESSAGES, type Author, type ChannelId, type ChatMessage, type MsgChip } from '@/data/comms';
+import { FLEET, type Party } from '@/data/fleet';
+import { PARTNERS, type PartnerId } from '@/data/partners';
+import { WATCH_BY_ID } from '@/data/portfolio';
 import {
   CONTAINER,
   DISRUPTIONS,
@@ -26,9 +29,11 @@ import { buildAirSchedule, buildSuratSchedule, type HoldState } from '@/lib/flee
 import { ANCHOR_MS, formatDelta, formatStamp, formatUsd } from '@/lib/format';
 import { sha256Hex } from '@/lib/hash';
 import type { LatLon } from '@/lib/geo';
+import { viewFromPath, type ViewId } from '@/lib/routes';
 import type { Tone } from '@/lib/palette';
 import {
   DEFAULT_INPUTS,
+  batonAt,
   buildSchedule,
   type CustomsState,
   type HighwayState,
@@ -110,11 +115,34 @@ interface Facts {
   /** SHP-2611-0494's RMS examination at Mundra. */
   hold0494: HoldState;
   hold0494AtH: number | null;
+  /** Forwarder chosen in the partner marketplace, per shipment. Absent: the incumbent. */
+  assignments: Partial<Record<ShipmentId, PartnerId>>;
+  messages: ChatMessage[];
+  /** Highest message id each channel has been read up to. */
+  readUpTo: Record<ChannelId, number>;
+  /** Someone composing a reply, for the typing indicator. */
+  typing: { channel: ChannelId; author: Author; shipment: ShipmentId | null } | null;
+}
+
+/** Camera target for a watch-list shipment, which rides an ambient corridor. */
+export interface CorridorFocus {
+  shipmentId: string;
+  routeId: string;
+  cam: LatLon;
+  camR: number;
+  nonce: number;
 }
 
 export type SidebarTab = 'shipments' | 'lens';
 
 export interface ShipmentState extends Facts {
+  /** The workspace in the main viewport. The globe stays mounted behind the others. */
+  view: ViewId;
+  navCollapsed: boolean;
+  /** Open channel in the comms hub. */
+  channel: ChannelId;
+  /** Set when a watch-list shipment is tracked; cleared by any primary selection. */
+  focus: CorridorFocus | null;
   /** The shipment the HUD and camera follow. */
   selected: ShipmentId;
   sidebarTab: SidebarTab;
@@ -137,6 +165,17 @@ export interface ShipmentState extends Facts {
   twinLoaded: boolean;
   phoneOpen: boolean;
   panelOpen: boolean;
+
+  setView: (view: ViewId) => void;
+  toggleNav: () => void;
+  /** Select a shipment (or focus a watch-list corridor) and fly there on the globe. */
+  trackShipment: (id: string) => void;
+  assignPartner: (partner: PartnerId) => void;
+  setChannel: (channel: ChannelId) => void;
+  markRead: (channel: ChannelId) => void;
+  postMessage: (text: string) => void;
+  /** Flag the open channel's shipment to whoever holds its baton, with a response SLA. */
+  escalate: () => void;
 
   selectShipment: (id: ShipmentId) => void;
   setSidebarTab: (tab: SidebarTab) => void;
@@ -176,6 +215,65 @@ let seq = 1;
 const nextId = () => seq++;
 const liveHour = () => (Date.now() - ANCHOR_MS) / 3_600_000;
 
+/**
+ * Seeded threads start read, except the newest message in two channels, so the
+ * Comms badge has something to say on first load.
+ */
+function seedComms(): Pick<Facts, 'messages' | 'readUpTo' | 'typing'> {
+  const messages = SEED_MESSAGES.map((m) => ({ ...m, id: nextId() }));
+  const readUpTo = Object.fromEntries(
+    CHANNELS.map((c) => {
+      const ids = messages.filter((m) => m.channel === c.id).map((m) => m.id);
+      const unread = c.id === 'shp-0482' || c.id === 'customs' ? 1 : 0;
+      return [c.id, ids.length > unread ? ids[ids.length - 1 - unread] : 0];
+    }),
+  ) as Record<ChannelId, number>;
+  return { messages, readUpTo, typing: null };
+}
+
+function initialView(): ViewId {
+  return typeof window === 'undefined' ? 'tower' : viewFromPath(window.location.pathname);
+}
+
+const NAV_KEY = 'osp.nav.collapsed';
+function initialNavCollapsed(): boolean {
+  try {
+    const v = localStorage.getItem(NAV_KEY);
+    return v === null ? true : v === '1';
+  } catch {
+    return true;
+  }
+}
+
+const initialsOf = (name: string) =>
+  name
+    .split(' ')
+    .map((w) => w[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+
+/** The party playing `role` on a shipment, after any marketplace reassignment. */
+export function partyOf(assignments: Facts['assignments'], id: ShipmentId, role: Role): Party {
+  const pid = role === 'forwarder' ? assignments[id] : undefined;
+  if (!pid) return FLEET[id].parties[role];
+  const p = PARTNERS[pid];
+  return { org: p.name, person: p.contact.person, title: p.contact.title, initials: initialsOf(p.contact.person) };
+}
+
+/** Escrow payee label, after any marketplace reassignment. */
+export function payeeOf(assignments: Facts['assignments'], id: ShipmentId, line: { id: Role; party: string }): string {
+  const pid = line.id === 'forwarder' ? assignments[id] : undefined;
+  return pid ? PARTNERS[pid].short : line.party;
+}
+
+/** Unread messages from other people across all channels. */
+export function unreadCount(s: Pick<Facts, 'messages' | 'readUpTo'>, channel?: ChannelId): number {
+  let n = 0;
+  for (const m of s.messages) if (!m.mine && (!channel || m.channel === channel) && m.id > s.readUpTo[m.channel]) n++;
+  return n;
+}
+
 function seedFacts(): Facts {
   return {
     ...DEFAULT_INPUTS,
@@ -189,6 +287,8 @@ function seedFacts(): Facts {
     ulipLog: [],
     hold0494: 'active',
     hold0494AtH: null,
+    assignments: {},
+    ...seedComms(),
   };
 }
 
@@ -250,8 +350,33 @@ export const useShipment = create<ShipmentState>((set, get) => {
 
   const place = (id: keyof typeof PLACES) => PLACES[id].at;
 
+  /** Post into a comms channel. Shipment defaults to the channel's own. */
+  const say = (channel: ChannelId, author: Author, text: string, opts: { chips?: MsgChip[]; via?: 'driver-app'; shipment?: ShipmentId } = {}) =>
+    set((s) => {
+      const msg: ChatMessage = {
+        id: nextId(),
+        channel,
+        author,
+        shipment: opts.shipment ?? CHANNEL_BY_ID[channel].shipment,
+        text,
+        h: s.nowH,
+        chips: opts.chips,
+        via: opts.via,
+      };
+      // Reading the channel right now counts as having read the new message.
+      const reading = s.view === 'comms' && s.channel === channel && typeof document !== 'undefined' && !document.hidden;
+      return {
+        messages: [...s.messages, msg].slice(-240),
+        readUpTo: reading ? { ...s.readUpTo, [channel]: msg.id } : s.readUpTo,
+      };
+    });
+
   return {
     ...seedFacts(),
+    view: initialView(),
+    navCollapsed: initialNavCollapsed(),
+    focus: null,
+    channel: 'shp-0482',
     selected: FLAGSHIP,
     sidebarTab: 'shipments',
     showNetwork: true,
@@ -268,9 +393,102 @@ export const useShipment = create<ShipmentState>((set, get) => {
     phoneOpen: false,
     panelOpen: typeof window === 'undefined' || window.innerWidth >= 1100,
 
+    setView: (view) => {
+      if (get().view === view) return;
+      set({ view, xrayOpen: false, phoneOpen: view === 'tower' ? get().phoneOpen : false });
+    },
+    toggleNav: () => {
+      const navCollapsed = !get().navCollapsed;
+      try {
+        localStorage.setItem(NAV_KEY, navCollapsed ? '1' : '0');
+      } catch {
+        /* private mode: the choice just isn't remembered */
+      }
+      set({ navCollapsed });
+    },
+    trackShipment: (id) => {
+      const s = get();
+      if (s.twin !== 'closed') return;
+      if (id in FLEET) {
+        set((st) => ({ view: 'tower', selected: id as ShipmentId, focus: null, flightNonce: st.flightNonce + 1 }));
+        return;
+      }
+      const w = WATCH_BY_ID[id];
+      if (!w) return;
+      set((st) => ({
+        view: 'tower',
+        showNetwork: true,
+        focus: { shipmentId: id, routeId: w.routeId, cam: w.focus.cam, camR: w.focus.camR, nonce: (st.focus?.nonce ?? 0) + 1 },
+      }));
+      get().pushToast(
+        { tone: 'slate', title: `Tracking ${id} · ${w.origin} → ${w.destination}`, body: `${w.carrier} · read-only carrier feed on the ${w.origin} corridor.` },
+        4200,
+      );
+    },
+    assignPartner: (pid) => {
+      const s = get();
+      const id = s.selected;
+      if (s.assignments[id] === pid) return;
+      const p = PARTNERS[pid];
+      const prev = partyOf(s.assignments, id, 'forwarder').org;
+      set({ assignments: { ...s.assignments, [id]: pid } });
+      feed('forwarder', `${id} · forwarder reassigned ${prev} → ${p.name}`, 'emerald');
+      say(CHANNEL_FOR[id], 'system', `${p.name} is now the freight forwarder on ${id}, taking over from ${prev}. ${p.contact.person} joined the channel.`, {
+        chips: [{ kind: 'milestone', label: 'Partner assigned', tone: 'emerald' }, { kind: 'escrow', label: 'Escrow payee updated', tone: 'cobalt' }],
+      });
+      get().pushToast({
+        tone: 'emerald',
+        title: `${p.name} assigned · ${id}`,
+        body: `${p.contact.person} now leads forwarding. Escrow, documents and comms all point to ${p.short}.`,
+      });
+    },
+    setChannel: (channel) => {
+      set({ channel });
+      get().markRead(channel);
+    },
+    markRead: (channel) =>
+      set((s) => {
+        const last = s.messages.reduce((m, x) => (x.channel === channel && x.id > m ? x.id : m), 0);
+        return last > s.readUpTo[channel] ? { readUpTo: { ...s.readUpTo, [channel]: last } } : {};
+      }),
+    postMessage: (raw) => {
+      const text = raw.trim();
+      if (!text) return;
+      const s = get();
+      const channel = s.channel;
+      const shipment = CHANNEL_BY_ID[channel].shipment ?? s.selected;
+      const msg: ChatMessage = { id: nextId(), channel, author: s.role, shipment, text, h: s.nowH, mine: true };
+      set((st) => ({ messages: [...st.messages, msg].slice(-240), readUpTo: { ...st.readUpTo, [channel]: msg.id } }));
+
+      // Someone on the other side answers, so the thread feels like a live room.
+      const reply = composeReply(get(), channel, shipment, text);
+      const epoch = get().messages;
+      setTimeout(() => {
+        if (!get().messages.includes(epoch[epoch.length - 1])) return; // demo was reset
+        set({ typing: { channel, author: reply.author, shipment } });
+      }, 450);
+      setTimeout(() => {
+        if (!get().messages.includes(epoch[epoch.length - 1])) return;
+        set({ typing: null });
+        say(channel, reply.author, reply.text, { chips: reply.chips, shipment });
+      }, 2000);
+    },
+
+    escalate: () => {
+      const s = get();
+      const shipment = CHANNEL_BY_ID[s.channel].shipment ?? s.selected;
+      const holder = batonAt(getScheduleFor(shipment), s.nowH, s.nowH).role;
+      const who = partyOf(s.assignments, shipment, holder);
+      say(s.channel, 'system', `${ROLES[s.role].label} escalated ${shipment} to ${who.person} (${ROLES[holder].label}). Response due within 2 hours.`, {
+        shipment,
+        chips: [{ kind: 'alert', label: 'Escalation · SLA 2h', tone: 'amber' }],
+      });
+      get().pushToast({ tone: 'amber', title: `Escalated to ${who.person}`, body: `${ROLES[holder].label} on ${shipment} · response SLA 2h. Everyone on the channel is notified.` }, 4200);
+    },
+
     selectShipment: (id) => {
       if (get().twin !== 'closed') return;
-      set((s) => ({ selected: id, flightNonce: s.flightNonce + 1 }));
+      set((s) => ({ selected: id, focus: null, flightNonce: s.flightNonce + 1 }));
     },
     setSidebarTab: (sidebarTab) => set({ sidebarTab }),
     toggleNetwork: () => set((s) => ({ showNetwork: !s.showNetwork })),
@@ -281,6 +499,13 @@ export const useShipment = create<ShipmentState>((set, get) => {
       get().pushSonar(place('mundra'), 'emerald');
       get().pushUlip('icegate', 'RMS re-assessment accepted · SB 5512094 · LEO granted');
       feed('ai', 'SHP-2611-0494 · classification brief accepted, RMS hold lifted at Mundra', 'emerald');
+      say('shp-0494', 'broker', 'Sent the classification brief. RMS accepted it and LEO is granted, so the box makes the 112E cutoff.', {
+        chips: [{ kind: 'milestone', label: 'LEO granted', tone: 'emerald' }, { kind: 'escrow', label: '₹11,900 released', tone: 'emerald' }],
+      });
+      say('customs', 'icegate', 'SB 5512094 · RMS re-assessment accepted · LEO granted · Mundra', {
+        shipment: 'SHP-2611-0494',
+        chips: [{ kind: 'milestone', label: 'Hold lifted', tone: 'emerald' }],
+      });
       get().pushToast({
         tone: 'emerald',
         title: 'RMS hold lifted · SHP-2611-0494',
@@ -356,6 +581,13 @@ export const useShipment = create<ShipmentState>((set, get) => {
       get().pushSonar(place('jnpt'), 'emerald');
       feed('ai', `Commercial Invoice gross weight amended ${XRAY_FIX.from} → ${XRAY_FIX.to}`, 'emerald');
       feed('ai', `e-BL re-synced · sha256 ${hash.slice(0, 10)}…`, 'emerald');
+      say('shp-0482', 'ai', `Commercial Invoice amended ${XRAY_FIX.from} → ${XRAY_FIX.to}. All four key fields now match and the e-BL is re-synced.`, {
+        chips: [{ kind: 'doc', label: 'CI amended', tone: 'emerald' }, { kind: 'hash', label: `sha256 ${hash.slice(0, 12)}…`, tone: 'emerald' }],
+      });
+      say('customs', 'ai', 'SB 4471823 · documents reconciled. The weight hold is no longer expected.', {
+        shipment: FLAGSHIP,
+        chips: [{ kind: 'milestone', label: 'LEO unblocked', tone: 'emerald' }],
+      });
       get().pushToast({
         tone: 'emerald',
         title: 'Documents re-synced · e-BL SHA-256 verified',
@@ -378,6 +610,10 @@ export const useShipment = create<ShipmentState>((set, get) => {
         get().pushUlip('portgate', 'OCR gate-in · Gate 4 · OSPU 482190 8 · photo geo-tagged');
         feed('transporter', 'Gate-in confirmed by driver · photo geo-tagged 18.9496°N 72.9511°E', 'emerald');
         feed('transporter', `Escrow released · ${ESCROW[0].amount} → ${ESCROW[0].party}`, 'emerald');
+        say('shp-0482', 'transporter', 'Gate-in photo uploaded at JNPT Gate 4, geo-tagged 18.9496°N 72.9511°E. Box is at the terminal.', {
+          via: 'driver-app',
+          chips: [{ kind: 'milestone', label: 'Gate-in · JNPT', tone: 'emerald' }, { kind: 'escrow', label: `${ESCROW[0].amount} released`, tone: 'emerald' }],
+        });
         get().pushToast({
           tone: 'emerald',
           title: 'Gate-in confirmed at JNPT',
@@ -394,6 +630,10 @@ export const useShipment = create<ShipmentState>((set, get) => {
       get().pushSonar(place('jnpt'), 'emerald');
       get().pushUlip('icegate', `LEO granted · ${SHIPMENT.shippingBill} · out of charge`);
       feed('broker', `Let Export Order granted on ${SHIPMENT.shippingBill}`, 'emerald');
+      say('shp-0482', 'broker', `LEO granted on ${SHIPMENT.shippingBill}. Over to the forwarder for VGM and loading.`, {
+        chips: [{ kind: 'milestone', label: 'Customs cleared · LEO', tone: 'emerald' }, { kind: 'escrow', label: `${ESCROW[1].amount} released`, tone: 'emerald' }],
+      });
+      say('customs', 'icegate', `${SHIPMENT.shippingBill} · LEO granted · out of charge · JNPT`, { shipment: FLAGSHIP, chips: [{ kind: 'milestone', label: 'LEO', tone: 'emerald' }] });
       get().pushToast({
         tone: 'emerald',
         title: 'Customs cleared · Let Export Order',
@@ -407,6 +647,7 @@ export const useShipment = create<ShipmentState>((set, get) => {
       set((st) => ({ actuals: { ...st.actuals, vgm: st.nowH } }));
       get().pushUlip('portgate', 'VGM 12,846 kg accepted · WB-03 · SOLAS VI/2');
       feed('forwarder', 'VGM 12,846 kg submitted to terminal (SOLAS VI/2)', 'cobalt');
+      say('shp-0482', 'forwarder', 'VGM submitted: 12,846 kg on WB-03, within tolerance.', { chips: [{ kind: 'milestone', label: 'VGM submitted', tone: 'cobalt' }] });
       get().pushToast({ tone: 'cobalt', title: 'VGM submitted', body: 'Weighbridge WB-03 · 12,846 kg · within tolerance.' });
     },
 
@@ -416,6 +657,9 @@ export const useShipment = create<ShipmentState>((set, get) => {
       set((st) => ({ actuals: { ...st.actuals, ebl: st.nowH } }));
       get().pushSonar(place('jnpt'), 'cobalt');
       feed('forwarder', `e-BL KMOL-047W-0482 issued · hash anchored ${s.eblHash?.slice(0, 10)}…`, 'emerald');
+      say('shp-0482', 'forwarder', 'e-BL KMOL-047W-0482 issued and anchored. Exporter, you can present it under the LC.', {
+        chips: [{ kind: 'doc', label: 'e-BL issued', tone: 'emerald' }, { kind: 'hash', label: `sha256 ${s.eblHash?.slice(0, 12)}…`, tone: 'emerald' }],
+      });
       get().pushToast({
         tone: 'emerald',
         title: 'e-BL issued & anchored',
@@ -429,6 +673,9 @@ export const useShipment = create<ShipmentState>((set, get) => {
       set((st) => ({ actuals: { ...st.actuals, lc: st.nowH } }));
       get().pushSonar(place('chakan'), 'emerald');
       feed('exporter', `LC proceeds ${ESCROW[3].amount} credited against e-BL presentation`, 'emerald');
+      say('shp-0482', 'exporter', `Presented the e-BL under the LC. ${ESCROW[3].amount} credited. Thanks, everyone.`, {
+        chips: [{ kind: 'escrow', label: `${ESCROW[3].amount} released`, tone: 'emerald' }],
+      });
       get().pushToast({ tone: 'emerald', title: 'LC proceeds released', body: `${ESCROW[3].amount} credited to Deccan Precision.` });
     },
 
@@ -462,6 +709,11 @@ export const useShipment = create<ShipmentState>((set, get) => {
       if (kind === 'highway_delay') get().pushUlip('fastag', 'FASTag gap · Khalapur plaza · 42 min no read');
       if (kind === 'customs_hold') get().pushUlip('icegate', 'RMS: examination order · HS query on SB 4471823');
       feed(kind === 'customs_hold' ? 'icegate' : kind === 'highway_delay' ? 'fastag' : 'forwarder', `${def.title} · ${def.where}`, 'crimson');
+      say('shp-0482', 'ai', `${def.title}: ${def.where}. Demurrage exposure is accruing at $${def.ratePerDay.toLocaleString('en-US')}/day. The Co-Pilot has two recovery options ready.`, {
+        chips: [{ kind: 'alert', label: def.short, tone: 'crimson' }],
+      });
+      if (kind === 'customs_hold')
+        say('customs', 'icegate', 'SB 4471823 · RMS examination order · HS query · JNPT', { shipment: FLAGSHIP, chips: [{ kind: 'alert', label: 'Examination', tone: 'crimson' }] });
       get().pushToast({ tone: 'crimson', title: def.title, body: def.where }, 4200);
     },
 
@@ -496,6 +748,12 @@ export const useShipment = create<ShipmentState>((set, get) => {
       get().pushSonar(place(def.place), 'emerald');
       feed('ai', `Recovery executed · ${option.title}`, 'emerald');
       feed('ai', `New ETA Duisburg ${formatStamp(after.deliveredH, 'Europe/Berlin')} CET (${formatDelta(etaDeltaH)})`, 'cobalt');
+      say('shp-0482', 'ai', `Recovery executed: ${option.title}. The new ETA went to all four parties.`, {
+        chips: [
+          { kind: 'eta', label: `ETA ${formatStamp(after.deliveredH, 'Europe/Berlin')} CET · ${formatDelta(etaDeltaH)}`, tone: 'cobalt' },
+          { kind: 'escrow', label: `Exposure capped at ${formatUsd(accrued)}`, tone: 'amber' },
+        ],
+      });
       get().pushToast(
         {
           tone: 'cobalt',
@@ -516,12 +774,60 @@ export const useShipment = create<ShipmentState>((set, get) => {
         phoneOpen: false,
         sonars: [],
         toasts: [],
+        focus: null,
         flightNonce: s.flightNonce + 1,
       }));
       get().pushToast({ tone: 'slate', title: 'Demo reset', body: 'Shipment restored to its seeded state.' }, 2600);
     },
   };
 });
+
+const ACK: Record<Role, string> = {
+  exporter: 'Thanks, noted on our side. Ping me here if anything needs a signature.',
+  forwarder: "Copy that. I'll keep the booking in step and post here when it moves.",
+  broker: "Noted. I'll reflect it on the ICEGATE filing and confirm here.",
+  transporter: "Noted. I'll confirm from the gate.",
+};
+
+/**
+ * Who answers a message posted from the composer, and what they say. ETA, document
+ * and customs questions get a factual answer from live state; anything else is
+ * acknowledged by whoever holds the baton.
+ */
+function composeReply(s: ShipmentState, channel: ChannelId, shipment: ShipmentId, text: string): { author: Author; text: string; chips?: MsgChip[] } {
+  const q = text.toLowerCase();
+  const def = FLEET[shipment];
+  const schedule = getScheduleFor(shipment);
+  if (/\beta\b|arriv|when|delay/.test(q)) {
+    const stamp = formatStamp(schedule.deliveredH, def.destTz);
+    return {
+      author: 'ai',
+      text: `Live ETA for ${shipment}: ${def.destination}, ${stamp} local. Every party on the channel sees the same figure.`,
+      chips: [{ kind: 'eta', label: `ETA ${def.destination} · ${stamp}`, tone: 'cobalt' }],
+    };
+  }
+  if (/invoice|document|\bdocs?\b|weight|x-?ray|mismatch|e-?bl/.test(q) && shipment === FLAGSHIP) {
+    return s.docsVerified
+      ? { author: 'ai', text: 'All four key fields match across the CI, Packing List and e-BL. The e-BL hash is anchored.', chips: [{ kind: 'doc', label: 'Docs verified', tone: 'emerald' }] }
+      : {
+          author: 'ai',
+          text: `The gross weight gap is still open: ${XRAY_FIX.from} on the invoice against ${XRAY_FIX.to} on the Packing List. Resolve it in the Document Studio.`,
+          chips: [{ kind: 'alert', label: 'Gross weight mismatch', tone: 'crimson' }],
+        };
+  }
+  if (/hold|rms|customs|\bleo\b|clearance/.test(q)) {
+    const held = shipment === 'SHP-2611-0494' ? s.hold0494 === 'active' : s.customs === 'active' || !s.docsVerified;
+    const author: Author = s.role === 'broker' ? 'ai' : 'broker';
+    return {
+      author,
+      text: held ? 'Still held. I am on it and will post the LEO here the moment ICEGATE grants it.' : 'Customs is clear on this one. Nothing outstanding from the CHA side.',
+      chips: [{ kind: 'milestone', label: held ? 'Customs hold' : 'Customs clear', tone: held ? 'crimson' : 'emerald' }],
+    };
+  }
+  const holder = batonAt(schedule, s.nowH, s.nowH).role;
+  if (holder !== s.role) return { author: holder, text: ACK[holder] };
+  return { author: 'ai', text: `Logged on the ${CHANNEL_BY_ID[channel].name} record. Every party on this channel sees it.` };
+}
 
 /**
  * Demurrage accrues on an accelerated demo clock so the counter visibly moves:
