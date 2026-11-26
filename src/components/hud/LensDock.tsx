@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Activity, ArrowRight, Gauge, Leaf, Package, Route } from 'lucide-react';
+import { Activity, ArrowRight, ChevronDown, Gauge, Leaf, Package, Route } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { portReading } from '@/lib/congestion';
@@ -59,6 +59,8 @@ export function SidebarCard() {
   const lens = useShipment((s) => s.lens);
   const tab = useShipment((s) => s.sidebarTab);
   const setTab = useShipment((s) => s.setSidebarTab);
+  const open = useShipment((s) => s.sidebarOpen);
+  const toggle = useShipment((s) => s.toggleSidebarCard);
   const meta = LENSES.find((l) => l.id === lens)!;
   const tabs = [
     { id: 'shipments' as const, label: 'Shipments', icon: <Package size={14} />, count: 3 },
@@ -66,47 +68,72 @@ export function SidebarCard() {
   ];
   return (
     <div className="glass pointer-events-auto w-[300px] overflow-hidden rounded-2xl">
-      <div className="hairline flex items-center gap-1 border-b p-1.5" role="tablist" aria-label="Sidebar">
-        {tabs.map((t) => {
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              role="tab"
-              aria-selected={active}
-              onClick={() => setTab(t.id)}
-              className="relative flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 text-[11.5px] font-semibold transition-colors"
-              style={{ color: active ? PALETTE.ink : PALETTE.muted }}
-            >
-              {active && (
-                <motion.span
-                  layoutId="sidebar-tab"
-                  className="absolute inset-0 rounded-xl bg-white shadow-[0_1px_2px_rgb(15_23_42/0.08),inset_0_0_0_1px_rgb(15_23_42/0.06)]"
-                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
-                />
-              )}
-              <span className="relative shrink-0 text-cobalt [&>svg]:h-[14px] [&>svg]:w-[14px]">{t.icon}</span>
-              <span className="relative truncate">{t.label}</span>
-              {t.count > 0 && <span className="num relative rounded-full bg-cobalt/10 px-1.5 text-[9.5px] text-cobalt">{t.count}</span>}
-            </button>
-          );
-        })}
-      </div>
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.div
-          key={tab === 'shipments' ? 'shipments' : lens}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.2 }}
-          className="px-3.5 py-3"
+      <div className={`flex items-center gap-1 p-1.5 ${open ? 'hairline border-b' : 'border-b border-transparent'}`}>
+        <div className="flex min-w-0 flex-1 items-center gap-1" role="tablist" aria-label="Sidebar">
+          {tabs.map((t) => {
+            const active = tab === t.id;
+            return (
+              <button
+                key={t.id}
+                role="tab"
+                aria-selected={active}
+                onClick={() => setTab(t.id)}
+                className="relative flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 text-[11.5px] font-semibold transition-colors"
+                style={{ color: active ? PALETTE.ink : PALETTE.muted }}
+              >
+                {active && (
+                  <motion.span
+                    layoutId="sidebar-tab"
+                    className="absolute inset-0 rounded-xl bg-white shadow-[0_1px_2px_rgb(15_23_42/0.08),inset_0_0_0_1px_rgb(15_23_42/0.06)]"
+                    transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                  />
+                )}
+                <span className="relative shrink-0 text-cobalt [&>svg]:h-[14px] [&>svg]:w-[14px]">{t.icon}</span>
+                <span className="relative truncate">{t.label}</span>
+                {t.count > 0 && <span className="num relative rounded-full bg-cobalt/10 px-1.5 text-[9.5px] text-cobalt">{t.count}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <button
+          onClick={toggle}
+          aria-expanded={open}
+          aria-controls="sidebar-card-body"
+          aria-label={open ? 'Collapse panel' : 'Expand panel'}
+          title={open ? 'Collapse panel' : 'Expand panel'}
+          className="grid h-8 w-8 shrink-0 place-items-center rounded-xl text-muted transition-colors hover:bg-slate-900/[0.05] hover:text-ink"
         >
-          {tab === 'shipments' && <ShipmentsTab />}
-          {tab === 'lens' && lens === 'operations' && <OpsLens />}
-          {tab === 'lens' && lens === 'risk' && <RiskLens />}
-          {tab === 'lens' && lens === 'carbon' && <CarbonLens />}
-          {tab === 'lens' && lens === 'ulip' && <UlipLens />}
-        </motion.div>
+          <ChevronDown size={15} className={`transition-transform duration-300 ${open ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            id="sidebar-card-body"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+            className="overflow-hidden"
+          >
+            <AnimatePresence mode="wait" initial={false}>
+              <motion.div
+                key={tab === 'shipments' ? 'shipments' : lens}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.2 }}
+                className="px-3.5 py-3"
+              >
+                {tab === 'shipments' && <ShipmentsTab />}
+                {tab === 'lens' && lens === 'operations' && <OpsLens />}
+                {tab === 'lens' && lens === 'risk' && <RiskLens />}
+                {tab === 'lens' && lens === 'carbon' && <CarbonLens />}
+                {tab === 'lens' && lens === 'ulip' && <UlipLens />}
+              </motion.div>
+            </AnimatePresence>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

@@ -146,6 +146,8 @@ export interface ShipmentState extends Facts {
   /** The shipment the HUD and camera follow. */
   selected: ShipmentId;
   sidebarTab: SidebarTab;
+  /** The Shipments / lens card on the Control Tower, folded down to its tab strip when false. */
+  sidebarOpen: boolean;
   /** Ambient network corridors on the globe. */
   showNetwork: boolean;
   role: Role;
@@ -179,6 +181,7 @@ export interface ShipmentState extends Facts {
 
   selectShipment: (id: ShipmentId) => void;
   setSidebarTab: (tab: SidebarTab) => void;
+  toggleSidebarCard: () => void;
   toggleNetwork: () => void;
   resolveHold0494: () => void;
   setRole: (role: Role) => void;
@@ -379,6 +382,7 @@ export const useShipment = create<ShipmentState>((set, get) => {
     channel: 'shp-0482',
     selected: FLAGSHIP,
     sidebarTab: 'shipments',
+    sidebarOpen: true,
     showNetwork: true,
     role: 'exporter',
     lens: 'operations',
@@ -490,7 +494,8 @@ export const useShipment = create<ShipmentState>((set, get) => {
       if (get().twin !== 'closed') return;
       set((s) => ({ selected: id, focus: null, flightNonce: s.flightNonce + 1 }));
     },
-    setSidebarTab: (sidebarTab) => set({ sidebarTab }),
+    setSidebarTab: (sidebarTab) => set({ sidebarTab, sidebarOpen: true }),
+    toggleSidebarCard: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
     toggleNetwork: () => set((s) => ({ showNetwork: !s.showNetwork })),
     resolveHold0494: () => {
       const s = get();
@@ -513,7 +518,7 @@ export const useShipment = create<ShipmentState>((set, get) => {
       });
     },
     setRole: (role) => set((s) => ({ role, flightNonce: s.flightNonce + 1 })),
-    setLens: (lens) => set({ lens, sidebarTab: 'lens' }),
+    setLens: (lens) => set({ lens, sidebarTab: 'lens', sidebarOpen: true }),
     tick: () => set({ nowH: liveHour() }),
     scrub: (h) => set({ viewH: h }),
 
