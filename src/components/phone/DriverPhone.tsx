@@ -141,7 +141,7 @@ function DriverChat() {
     }, 900);
   };
 
-  const eta = Math.max(0, schedule.arrivalJnptH - nowH);
+  const eta = Math.max(0, schedule.gateInH - nowH);
   const viaRail = highway === 'rail';
 
   return (

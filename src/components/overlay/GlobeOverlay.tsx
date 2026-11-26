@@ -2,13 +2,15 @@ import { Box, ChevronRight, Navigation } from 'lucide-react';
 
 import { useAnchorRef } from '@/components/globe/anchors';
 import { usePlaceSpecs, type LabelSpec } from '@/components/globe/placeSpecs';
+import { DIORAMAS, type DioramaLabel } from '@/components/globe/dioramaData';
 import { RoleAvatar } from '@/components/hud/ui';
-import { PORTS, ROLES, SHIPMENT, ULIP, type PortCongestion, type UlipConnector } from '@/data/shipment';
+import { FLEET } from '@/data/fleet';
+import { PORTS, ROLES, ULIP, type PortCongestion, type UlipConnector } from '@/data/shipment';
 import { formatDuration, formatLatLonShort, formatStamp } from '@/lib/format';
 import { portReading } from '@/lib/congestion';
 import { PALETTE } from '@/lib/palette';
 import { batonAt, cargoAt } from '@/lib/schedule';
-import { useSchedule, useShipment, useViewHour } from '@/store/shipment';
+import { useSelectedSchedule, useShipment, useViewHour } from '@/store/shipment';
 
 /**
  * DOM layer for everything pinned to the globe. Positions and fades are written by
@@ -28,6 +30,7 @@ export function GlobeOverlay() {
         <UlipTag key={c.id} c={c} />
       ))}
       <HubTag />
+      {DIORAMAS.flatMap((d) => d.labels.map((l, i) => <DioramaTag key={`${d.id}:${i}`} id={`dio:${d.id}:${i}`} label={l} />))}
       <TelemetryPin />
     </div>
   );
@@ -60,8 +63,9 @@ function PortTag({ port }: { port: PortCongestion }) {
   const ref = useAnchorRef(`port:${port.id}`);
   const customs = useShipment((s) => s.customs);
   const redSea = useShipment((s) => s.redSea);
+  const hold0494 = useShipment((s) => s.hold0494);
   const nowH = useShipment((s) => s.nowH);
-  const r = portReading(port, { customs, redSea }, nowH * 3600);
+  const r = portReading(port, { customs, redSea, hold0494 }, nowH * 3600);
   const hex = r.tone === 'crimson' ? PALETTE.crimson : r.tone === 'amber' ? PALETTE.amber : PALETTE.emerald;
   return (
     <div ref={ref} className="transition-opacity duration-300">
@@ -110,6 +114,28 @@ function UlipTag({ c }: { c: UlipConnector }) {
   );
 }
 
+/** Micro-labels on the port dioramas; only present below the close-zoom threshold. */
+function DioramaTag({ id, label }: { id: string; label: DioramaLabel }) {
+  const ref = useAnchorRef(id);
+  const hold = useShipment((s) => s.hold0494);
+  const tone = label.tone === 'crimson' && hold !== 'active' ? 'emerald' : label.tone;
+  const hex = tone === 'crimson' ? PALETTE.crimson : tone === 'amber' ? PALETTE.amber : tone === 'emerald' ? PALETTE.emerald : PALETTE.cobalt;
+  return (
+    <div ref={ref} className="transition-opacity duration-300">
+      <div className="flex -translate-x-1/2 -translate-y-full flex-col items-center">
+        <div
+          className="flex items-center gap-1 rounded-md border border-white/70 px-1.5 py-[1px] whitespace-nowrap shadow-[0_2px_8px_rgb(15_23_42/0.12)]"
+          style={{ background: 'rgb(255 255 255 / 0.82)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)' }}
+        >
+          <span className="h-1.5 w-1.5 rounded-full" style={{ background: hex }} />
+          <span className="num text-[9.5px] font-semibold tracking-tight text-ink">{label.text}</span>
+        </div>
+        <span className="h-3 w-px bg-ink/30" />
+      </div>
+    </div>
+  );
+}
+
 function HubTag() {
   const ref = useAnchorRef('hub');
   return (
@@ -126,7 +152,9 @@ function TelemetryPin() {
   // Flip to the marker's left when the card would slide under the workspace panel.
   const panelOpen = useShipment((s) => s.panelOpen);
   const ref = useAnchorRef('cargo', panelOpen ? 700 : 300, 1.9);
-  const schedule = useSchedule();
+  const id = useShipment((s) => s.selected);
+  const def = FLEET[id];
+  const schedule = useSelectedSchedule();
   const h = useViewHour();
   const nowH = useShipment((s) => s.nowH);
   const startDive = useShipment((s) => s.startDive);
@@ -137,14 +165,16 @@ function TelemetryPin() {
   const baton = batonAt(schedule, h, nowH);
   const role = ROLES[baton.role];
   const alertOn = !!schedule.alert;
-  const viaAir = schedule.legs.some((l) => l.mode === 'air');
+  const viaAir = id === 'SHP-2611-0482' && schedule.legs.some((l) => l.mode === 'air');
 
-  const nextStop =
-    cargo.leg.group === 'origin' && cargo.phase !== 'port'
-      ? { label: 'ETA JNPT Gate 4', h: schedule.arrivalJnptH }
-      : cargo.phase === 'port'
-        ? { label: 'Vessel departs', h: schedule.byId.atd.plannedH }
-        : { label: viaAir ? 'ETA Schiphol' : 'ETA Rotterdam', h: schedule.ataH };
+  // The next stop, by stage of the journey: gate-in, departure, arrival, delivery.
+  const stops = [
+    { label: def.stops.gateIn, h: schedule.gateInH },
+    { label: def.stops.atd, h: schedule.byId.atd.plannedH },
+    { label: viaAir ? 'ETA Schiphol' : def.stops.ata, h: schedule.ataH },
+    { label: def.stops.delivered, h: schedule.deliveredH },
+  ];
+  const nextStop = stops.find((x) => x.h > h + 1e-3) ?? stops[stops.length - 1];
 
   const mode =
     cargo.phase === 'port' ? 'at terminal' : cargo.phase === 'hub' ? 'transhipment' : cargo.phase === 'delivered' ? 'delivered' : cargo.leg.mode;
@@ -159,7 +189,7 @@ function TelemetryPin() {
         {/* Orbital distance: a compact pill that expands on hover. */}
         <div className="pin-compact glass-strong pointer-events-auto items-center gap-2 rounded-full py-1 pr-2.5 pl-1">
           <RoleAvatar role={baton.role} size={22} />
-          <span className="num text-[11.5px] font-semibold text-ink">{SHIPMENT.container}</span>
+          <span className="num text-[11.5px] font-semibold text-ink">{def.unit.ref}</span>
           <span className="h-3 w-px bg-slate-900/10" />
           <span className="num text-[11px] font-semibold" style={{ color: live }}>
             {nextStop.h > h ? formatDuration(nextStop.h - h) : '—'}
@@ -173,7 +203,7 @@ function TelemetryPin() {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full opacity-60" style={{ background: live }} />
                 <span className="relative inline-flex h-2 w-2 rounded-full" style={{ background: live }} />
               </span>
-              <span className="num text-[12.5px] font-semibold text-ink">{SHIPMENT.container}</span>
+              <span className="num text-[12.5px] font-semibold text-ink">{def.unit.ref}</span>
             </div>
             <span
               className="num rounded-full px-1.5 py-px text-[9px] font-semibold tracking-wider"
@@ -203,8 +233,8 @@ function TelemetryPin() {
               </div>
             </div>
             <div>
-              <div className="eyebrow !text-[8.5px]">ETA Duisburg</div>
-              <div className="num text-[13px] font-semibold text-ink">{formatStamp(schedule.deliveredH, 'Europe/Berlin').slice(0, 10)}</div>
+              <div className="eyebrow !text-[8.5px]">ETA {def.destination}</div>
+              <div className="num text-[13px] font-semibold text-ink">{formatStamp(schedule.deliveredH, def.destTz).slice(0, 10)}</div>
             </div>
           </div>
 
@@ -214,13 +244,15 @@ function TelemetryPin() {
               <span className="truncate">{formatLatLonShort(cargo.lat, cargo.lon)}</span>
               <span className="text-subtle capitalize">· {mode}</span>
             </div>
-            <button
-              onClick={startDive}
-              className="flex shrink-0 items-center gap-0.5 rounded-md px-1 py-0.5 text-[10px] font-semibold text-cobalt transition-colors hover:bg-cobalt/10"
-              title="Open the 3D cargo twin"
-            >
-              <Box size={11} /> Twin <ChevronRight size={10} />
-            </button>
+            {def.twin && (
+              <button
+                onClick={startDive}
+                className="flex shrink-0 items-center gap-0.5 rounded-md px-1 py-0.5 text-[10px] font-semibold text-cobalt transition-colors hover:bg-cobalt/10"
+                title="Open the 3D cargo twin"
+              >
+                <Box size={11} /> Twin <ChevronRight size={10} />
+              </button>
+            )}
           </div>
         </div>
       </div>

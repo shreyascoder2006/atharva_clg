@@ -10,6 +10,8 @@ export interface LabelSpec {
   range: [number, number];
   align?: 'left' | 'right' | 'below';
   strong?: boolean;
+  /** Ambient network ports: hidden with the network layer. */
+  ambient?: boolean;
 }
 
 const GLOBAL = 1.5;
@@ -46,6 +48,22 @@ export function usePlaceSpecs(): LabelSpec[] {
       l(PLACES.panvel),
       l(PLACES.mumbai, { align: 'left' }),
       l({ ...PLACES.jnpt, name: 'JNPT · Gate 4' }, { strong: true }),
+
+      // SHP-2611-0519 and SHP-2611-0494.
+      g(PLACES.blr, { strong: true, align: 'below' }),
+      g(PLACES.fra, { strong: true }),
+      g(PLACES.mundra, { strong: true, align: 'left' }),
+      g(PLACES.surat),
+      l(PLACES.ecity, { strong: true }),
+      l(PLACES.blr, { strong: true, align: 'left' }),
+      l({ ...PLACES.mundra, name: 'Mundra · MICT' }, { strong: true, align: 'left' }),
+      l(PLACES.surat, { strong: true }),
+
+      // Ambient network ports, from mid zoom down.
+      ...[PLACES.shanghai, PLACES.singapore, PLACES.colombo, PLACES.felixstowe, PLACES.newark, PLACES.mombasa].map((p) =>
+        // Felixstowe sits due west of Rotterdam, whose label runs left: drop it below.
+        g(p, { id: `a:${p.id}`, range: [1.15, 3.3], ambient: true, align: p.id === 'felixstowe' ? 'below' : undefined }),
+      ),
     ];
     if (routes.has('seaCape')) out.push(g(PLACES.cape, { align: 'left' }));
     if (routes.has('airDwcAms')) out.push(g(PLACES.schiphol));

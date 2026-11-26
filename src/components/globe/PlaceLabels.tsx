@@ -22,14 +22,15 @@ export function PlaceLabels() {
   useFrame(({ camera }) => {
     const d = camera.getWorldPosition(cam).length();
     // In the Risk lens the port congestion tags already name these hubs.
-    const riskLens = useShipment.getState().lens === 'risk';
+    const st = useShipment.getState();
+    const riskLens = st.lens === 'risk';
     for (const { spec, position } of points) {
       const a = anchor(`place:${spec.id}`);
       a.position.copy(position);
       const [lo, hi] = spec.range;
       // Fade across the range boundary rather than popping.
       const edge = Math.min(1, Math.max(0, Math.min((d - lo) / 0.06, (hi - d) / 0.06)));
-      const yield_ = riskLens && spec.range[0] > 0 && PORT_IDS.has(spec.place.id) ? 0 : 1;
+      const yield_ = (riskLens && spec.range[0] > 0 && PORT_IDS.has(spec.place.id)) || (spec.ambient && !st.showNetwork) ? 0 : 1;
       a.opacity = yield_ * edge * Math.max(0, Math.min(1, (facing(camera, position) - 0.08) / 0.2));
     }
   });

@@ -61,6 +61,9 @@ const coreFragment = /* glsl */ `
   uniform float uDash;
   uniform float uReveal;
   uniform float uComets;
+  uniform float uSpeed;
+  uniform float uPhase;
+  uniform float uCometGain;
   uniform float uDim;
   varying float vU;
   varying float vFacing;
@@ -92,8 +95,8 @@ const coreFragment = /* glsl */ `
     col = mix(col, uCarbonColor, uCarbon);
 
     // Tracer comets running in the direction of travel.
-    float k = fract(vU * uComets - uTime * 0.32);
-    float comet = smoothstep(0.8, 0.975, k) * (1.0 - smoothstep(0.975, 1.0, k));
+    float k = fract(vU * uComets - uTime * uSpeed + uPhase);
+    float comet = smoothstep(0.8, 0.975, k) * (1.0 - smoothstep(0.975, 1.0, k)) * uCometGain;
     col = mix(col, vec3(1.0), comet * 0.7);
     a = max(a, comet);
 
@@ -162,6 +165,9 @@ export function makeTubeUniforms(px: number, minWorld: number) {
     uDash: { value: 0 },
     uReveal: { value: 1 },
     uComets: { value: 3 },
+    uSpeed: { value: 0.32 },
+    uPhase: { value: 0 },
+    uCometGain: { value: 1 },
     uDim: { value: 0 },
   };
 }

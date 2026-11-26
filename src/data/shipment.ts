@@ -106,7 +106,34 @@ export const PLACES = P({
   rotterdam: { name: 'Port of Rotterdam', sub: 'Maasvlakte II', code: 'NLRTM', at: [51.9496, 4.1453] },
   schiphol: { name: 'Amsterdam Schiphol', code: 'AMS', at: [52.3105, 4.7683] },
   duisburg: { name: 'Duisburg · duisport', sub: 'Consignee DC', code: 'DEDUI', at: [51.4344, 6.7623] },
+
+  // SHP-2611-0519 · Bengaluru → Frankfurt (air)
+  ecity: { name: 'Electronic City', sub: 'Pharma plant · Bengaluru', at: [12.8456, 77.6603] },
+  blr: { name: 'Bengaluru Air Cargo', sub: 'Kempegowda Intl', code: 'BLR', at: [13.1986, 77.7066] },
+  fra: { name: 'Frankfurt CargoCity', code: 'FRA', at: [50.0379, 8.5622] },
+  morfelden: { name: 'Mörfelden', sub: 'Pharma DC', at: [49.977, 8.567] },
+
+  // SHP-2611-0494 · Surat → Mundra → Jebel Ali (sea)
+  surat: { name: 'Surat · Sachin GIDC', sub: 'Yarn mill', at: [21.087, 72.885] },
+  mundra: { name: 'Mundra', sub: 'MICT', code: 'INMUN', at: [22.7396, 69.7036] },
+  jafza: { name: 'JAFZA', sub: 'Consignee DC', at: [24.988, 55.11] },
+
+  // Ambient network corridors
+  shanghai: { name: 'Shanghai · Yangshan', code: 'CNSHA', at: [30.63, 122.07] },
+  singapore: { name: 'Singapore', code: 'SGSIN', at: [1.264, 103.84] },
+  chennai: { name: 'Chennai', code: 'INMAA', at: [13.095, 80.3] },
+  colombo: { name: 'Colombo', code: 'LKCMB', at: [6.95, 79.84] },
+  felixstowe: { name: 'Felixstowe', code: 'GBFXT', at: [51.955, 1.335] },
+  newark: { name: 'New York · Newark', code: 'USEWR', at: [40.684, -74.145] },
+  mombasa: { name: 'Mombasa', code: 'KEMBA', at: [-4.065, 39.665] },
 });
+
+export type PlaceId = keyof typeof PLACES;
+
+/** The three interactive shipments on the platform. 0482 carries the full workflow. */
+export type ShipmentId = 'SHP-2611-0482' | 'SHP-2611-0519' | 'SHP-2611-0494';
+export const SHIPMENT_IDS: ShipmentId[] = ['SHP-2611-0482', 'SHP-2611-0519', 'SHP-2611-0494'];
+export const FLAGSHIP = 'SHP-2611-0482' as const satisfies ShipmentId;
 
 // --- Routes ------------------------------------------------------------------
 
@@ -124,6 +151,8 @@ export interface RouteDef {
   touchdowns?: number[];
   /** Road and rail are longer than the great-circle chord through the waypoints. */
   windiness: number;
+  /** Multiplier on the hop lift. Ambient corridors sit lower than the primary arcs. */
+  liftScale?: number;
 }
 
 const roadPrefix: LatLon[] = [
@@ -327,6 +356,182 @@ export const ROUTES = {
     windiness: 1.18,
     waypoints: [PLACES.schiphol.at, [52.09, 5.12], [51.98, 5.9], [51.82, 6.4], PLACES.duisburg.at],
   },
+  // --- SHP-2611-0519 · Bengaluru → Frankfurt ---------------------------------
+  roadEcityBlr: {
+    id: 'roadEcityBlr',
+    mode: 'road',
+    label: 'Reefer · Electronic City → BLR cargo',
+    windiness: 1.18,
+    waypoints: [
+      PLACES.ecity.at,
+      [12.885, 77.645],
+      [12.917, 77.623],
+      [12.957, 77.7],
+      [13.007, 77.695],
+      [13.04, 77.64],
+      [13.08, 77.63],
+      [13.13, 77.66],
+      PLACES.blr.at,
+    ],
+  },
+  airBlrFra: {
+    id: 'airBlrFra',
+    mode: 'air',
+    label: 'SKB 761 · BLR → FRA',
+    windiness: 1,
+    touchdowns: [0, 1],
+    waypoints: [PLACES.blr.at, PLACES.fra.at],
+  },
+  roadFraMorfelden: {
+    id: 'roadFraMorfelden',
+    mode: 'road',
+    label: 'Cool van · FRA → Mörfelden',
+    windiness: 1.2,
+    waypoints: [PLACES.fra.at, [50.012, 8.581], PLACES.morfelden.at],
+  },
+
+  // --- SHP-2611-0494 · Surat → Mundra → Jebel Ali -----------------------------
+  roadSuratMundra: {
+    id: 'roadSuratMundra',
+    mode: 'road',
+    label: 'NH-48 / NH-41 · Surat → Mundra',
+    windiness: 1.14,
+    waypoints: [
+      PLACES.surat.at,
+      [21.7, 72.98],
+      [22.3, 73.18],
+      [22.99, 72.6],
+      [23.12, 72.03],
+      [23.09, 70.77],
+      [23.29, 70.34],
+      [23.08, 70.13],
+      PLACES.mundra.at,
+    ],
+  },
+  seaMundraJebelAli: {
+    id: 'seaMundraJebelAli',
+    mode: 'sea',
+    label: 'MV Kutch Pioneer 112E · Mundra → Jebel Ali',
+    windiness: 1,
+    touchdowns: [0, 5, 7],
+    waypoints: [
+      PLACES.mundra.at,
+      [22.55, 69.0],
+      [22.6, 67.5],
+      [24.0, 63.0],
+      [25.2, 58.6],
+      [26.45, 56.6],
+      [25.75, 55.6],
+      PLACES.jebelAli.at,
+    ],
+  },
+
+  // --- Ambient network corridors ---------------------------------------------
+  ambShanghaiJnpt: {
+    id: 'ambShanghaiJnpt',
+    mode: 'sea',
+    label: 'Shanghai → Singapore → JNPT',
+    windiness: 1,
+    liftScale: 0.45,
+    touchdowns: [0, 6, 14],
+    waypoints: [
+      PLACES.shanghai.at,
+      [24.6, 119.8],
+      [18.0, 114.6],
+      [10.0, 109.6],
+      [5.0, 105.6],
+      [2.6, 104.6],
+      PLACES.singapore.at,
+      [2.6, 101.2],
+      [5.9, 97.4],
+      [6.0, 90.0],
+      [5.6, 80.6],
+      [7.9, 76.4],
+      [12.8, 73.4],
+      [17.6, 72.6],
+      PLACES.jnpt.at,
+    ],
+  },
+  ambChennaiFelixstowe: {
+    id: 'ambChennaiFelixstowe',
+    mode: 'sea',
+    label: 'Chennai → Colombo → Felixstowe',
+    windiness: 1,
+    liftScale: 0.45,
+    touchdowns: [0, 2, 7, 13, 21, 30],
+    waypoints: [
+      PLACES.chennai.at,
+      [10.8, 81.2],
+      PLACES.colombo.at,
+      [6.4, 75.8],
+      [10.2, 64.0],
+      [12.6, 52.0],
+      [12.0, 45.4],
+      [12.35, 43.5],
+      [15.0, 41.9],
+      [18.2, 39.9],
+      [22.0, 37.6],
+      [26.6, 34.6],
+      [29.2, 32.9],
+      [30.45, 32.35],
+      [32.9, 29.6],
+      [34.4, 22.8],
+      [35.9, 15.4],
+      [37.6, 10.0],
+      [37.3, 4.0],
+      [36.4, -1.6],
+      [36.1, -5.4],
+      [36.7, -8.6],
+      [40.3, -10.4],
+      [43.6, -10.3],
+      [46.9, -7.9],
+      [48.9, -6.1],
+      [49.9, -2.9],
+      [50.7, 0.2],
+      [51.2, 1.7],
+      [51.6, 1.65],
+      PLACES.felixstowe.at,
+    ],
+  },
+  ambRotterdamNewark: {
+    id: 'ambRotterdamNewark',
+    mode: 'sea',
+    label: 'Rotterdam → New York / Newark',
+    windiness: 1,
+    liftScale: 0.45,
+    touchdowns: [0, 9],
+    waypoints: [
+      PLACES.rotterdam.at,
+      [51.75, 2.6],
+      [50.9, 1.0],
+      [50.1, -2.4],
+      [49.4, -6.6],
+      [47.6, -20.0],
+      [44.6, -38.0],
+      [41.8, -56.0],
+      [40.3, -69.0],
+      PLACES.newark.at,
+    ],
+  },
+  ambJebelAliMombasa: {
+    id: 'ambJebelAliMombasa',
+    mode: 'sea',
+    label: 'Jebel Ali → Mombasa',
+    windiness: 1,
+    liftScale: 0.45,
+    touchdowns: [0, 3, 8],
+    waypoints: [
+      PLACES.jebelAli.at,
+      [25.95, 55.9],
+      [26.35, 56.75],
+      [24.6, 58.7],
+      [20.5, 60.4],
+      [13.5, 56.0],
+      [5.0, 50.6],
+      [-1.8, 43.6],
+      PLACES.mombasa.at,
+    ],
+  },
 } satisfies Record<string, RouteDef>;
 
 export type RouteId = keyof typeof ROUTES;
@@ -414,7 +619,7 @@ export type MilestoneId =
   | 'delivered';
 
 export interface MilestoneMeta {
-  id: MilestoneId;
+  id: string;
   label: string;
   owner: Role;
   /** Where the milestone happens, for sonar ripples. */
@@ -458,7 +663,7 @@ export interface EscrowLine {
   id: Role;
   party: string;
   amount: string;
-  trigger: MilestoneId;
+  trigger: string;
   triggerLabel: string;
 }
 
@@ -773,6 +978,7 @@ export const PORTS: PortCongestion[] = [
   { id: 'jebelAli', name: 'Jebel Ali', code: 'AEJEA', at: PLACES.jebelAli.at, dwellDays: 1.4, yardUtil: 0.61, berthWaitH: 5, trend: -0.1 },
   { id: 'suez', name: 'Suez Canal', code: 'EGSUZ', at: PLACES.suez.at, dwellDays: 1.1, yardUtil: 0.55, berthWaitH: 18, trend: 0.2 },
   { id: 'rotterdam', name: 'Rotterdam', code: 'NLRTM', at: PLACES.rotterdam.at, dwellDays: 3.4, yardUtil: 0.87, berthWaitH: 22, trend: 0.6 },
+  { id: 'mundra', name: 'Mundra', code: 'INMUN', at: PLACES.mundra.at, dwellDays: 2.1, yardUtil: 0.66, berthWaitH: 9, trend: 0.1 },
 ];
 
 // --- ULIP / API connectors -----------------------------------------------------------

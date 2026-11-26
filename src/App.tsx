@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react';
 
 import { GlobeScene } from '@/components/globe/GlobeScene';
 import { CoPilot } from '@/components/hud/CoPilot';
-import { LensCard, LensDock } from '@/components/hud/LensDock';
+import { LensDock, SidebarCard } from '@/components/hud/LensDock';
 import { Timeline } from '@/components/hud/Timeline';
 import { Toasts } from '@/components/hud/Toasts';
 import { RoleSwitcher, ShipmentCard, Toolbar } from '@/components/hud/TopBar';
@@ -105,7 +105,7 @@ export default function App() {
                   <CoPilot key="copilot" />
                 ) : (
                   <motion.div key="lens" className="max-md:hidden" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                    <LensCard />
+                    <SidebarCard />
                   </motion.div>
                 )}
               </AnimatePresence>

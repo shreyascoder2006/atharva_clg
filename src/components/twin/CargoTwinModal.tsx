@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { Activity, ArrowLeft, Droplets, Lock, Move3d, Orbit, Thermometer, Vibrate } from 'lucide-react';
 
 import { Chip, Dot, Sparkline } from '@/components/hud/ui';
+import { FLEET } from '@/data/fleet';
 import { SHIPMENT } from '@/data/shipment';
 import { formatLatLonShort } from '@/lib/format';
 import { PALETTE } from '@/lib/palette';
@@ -22,11 +23,17 @@ const STATUS_LABEL: Record<PalletStatus, string> = {
 
 /** Inspection state per pallet, derived from what has actually happened to the box. */
 function usePalletStatuses(): PalletStatus[] {
+  const selected = useShipment((s) => s.selected);
   const customs = useShipment((s) => s.customs);
   const docsVerified = useShipment((s) => s.docsVerified);
   const gatedIn = useShipment((s) => s.actuals.gateIn !== undefined);
+  const hold0494 = useShipment((s) => s.hold0494);
   return useMemo(() => {
     const n = palletPositions().length;
+    // SHP-2611-0494 is already at Mundra; while RMS holds it, the scanned cases are flagged.
+    if (selected === 'SHP-2611-0494') {
+      return Array.from({ length: n }, (_, i) => (hold0494 === 'active' && [9, 11, 20, 22].includes(i) ? 'flagged' : 'cleared'));
+    }
     return Array.from({ length: n }, (_, i) => {
       if (customs === 'active' && (i === 13 || i === 15)) return 'flagged';
       if (!docsVerified && (i === 5 || i === 22)) return 'variance';
@@ -34,7 +41,7 @@ function usePalletStatuses(): PalletStatus[] {
       if (!gatedIn && i >= n - 4) return 'pending';
       return 'cleared';
     });
-  }, [customs, docsVerified, gatedIn]);
+  }, [selected, customs, docsVerified, gatedIn, hold0494]);
 }
 
 export function CargoTwinModal() {
@@ -45,6 +52,7 @@ export function CargoTwinModal() {
 function TwinView() {
   const close = useShipment((s) => s.closeTwin);
   const statuses = usePalletStatuses();
+  const def = FLEET[useShipment((s) => s.selected)];
   const [hover, setHover] = useState<{ i: number; x: number; y: number } | null>(null);
   const counts = statuses.reduce<Record<PalletStatus, number>>(
     (acc, s) => ({ ...acc, [s]: acc[s] + 1 }),
@@ -88,10 +96,10 @@ function TwinView() {
           <div className="leading-tight">
             <div className="flex items-center gap-2">
               <span className="text-[14px] font-semibold text-ink">3D Cargo Twin</span>
-              <span className="num text-[12px] font-semibold text-cobalt">{SHIPMENT.container}</span>
+              <span className="num text-[12px] font-semibold text-cobalt">{def.unit.ref}</span>
             </div>
             <div className="text-[11px] text-muted">
-              {SHIPMENT.equipment} · {SHIPMENT.packages} · {SHIPMENT.cargo}
+              {def.unit.equipment} · {def.id === 'SHP-2611-0482' ? SHIPMENT.packages : '288 cases'} · {def.cargo}
             </div>
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'motion/react';
-import { Activity, ArrowRight, Gauge, Leaf, Route } from 'lucide-react';
+import { Activity, ArrowRight, Gauge, Leaf, Package, Route } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import { portReading } from '@/lib/congestion';
@@ -7,7 +7,9 @@ import { CO2_FACTOR, PORTS, ROLES, T, ULIP, type Role } from '@/data/shipment';
 import { formatAgo, formatDuration, formatKg, formatUsd } from '@/lib/format';
 import { MODE_HEX, PALETTE, TONE_HEX } from '@/lib/palette';
 import { batonAt, carbonIntensity } from '@/lib/schedule';
-import { usePlan, useSchedule, useShipment, ULIP_BY_ID, type Lens } from '@/store/shipment';
+import { getRoute } from '@/lib/route';
+import { usePlanFor, useSelectedSchedule, useShipment, ULIP_BY_ID, type Lens } from '@/store/shipment';
+import { ShipmentsTab } from './ShipmentsTab';
 import { Chip, Dot, Eyebrow, RoleAvatar } from './ui';
 
 const LENSES: { id: Lens; label: string; short: string; icon: ReactNode }[] = [
@@ -49,29 +51,61 @@ export function LensDock() {
   );
 }
 
-export function LensCard() {
+/**
+ * The left sidebar card: the Shipments tab (the three live shipments and the network
+ * corridors) or the active globe lens.
+ */
+export function SidebarCard() {
   const lens = useShipment((s) => s.lens);
+  const tab = useShipment((s) => s.sidebarTab);
+  const setTab = useShipment((s) => s.setSidebarTab);
   const meta = LENSES.find((l) => l.id === lens)!;
+  const tabs = [
+    { id: 'shipments' as const, label: 'Shipments', icon: <Package size={14} />, count: 3 },
+    { id: 'lens' as const, label: meta.label, icon: meta.icon, count: 0 },
+  ];
   return (
     <div className="glass pointer-events-auto w-[300px] overflow-hidden rounded-2xl">
-      <div className="hairline flex items-center gap-2 border-b px-3.5 py-2.5">
-        <span className="text-cobalt">{meta.icon}</span>
-        <span className="text-[12.5px] font-semibold text-ink">{meta.label}</span>
-        <span className="ml-auto text-[10px] text-subtle">lens</span>
+      <div className="hairline flex items-center gap-1 border-b p-1.5" role="tablist" aria-label="Sidebar">
+        {tabs.map((t) => {
+          const active = tab === t.id;
+          return (
+            <button
+              key={t.id}
+              role="tab"
+              aria-selected={active}
+              onClick={() => setTab(t.id)}
+              className="relative flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 text-[11.5px] font-semibold transition-colors"
+              style={{ color: active ? PALETTE.ink : PALETTE.muted }}
+            >
+              {active && (
+                <motion.span
+                  layoutId="sidebar-tab"
+                  className="absolute inset-0 rounded-xl bg-white shadow-[0_1px_2px_rgb(15_23_42/0.08),inset_0_0_0_1px_rgb(15_23_42/0.06)]"
+                  transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                />
+              )}
+              <span className="relative shrink-0 text-cobalt [&>svg]:h-[14px] [&>svg]:w-[14px]">{t.icon}</span>
+              <span className="relative truncate">{t.label}</span>
+              {t.count > 0 && <span className="num relative rounded-full bg-cobalt/10 px-1.5 text-[9.5px] text-cobalt">{t.count}</span>}
+            </button>
+          );
+        })}
       </div>
       <AnimatePresence mode="wait" initial={false}>
         <motion.div
-          key={lens}
+          key={tab === 'shipments' ? 'shipments' : lens}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -6 }}
           transition={{ duration: 0.2 }}
           className="px-3.5 py-3"
         >
-          {lens === 'operations' && <OpsLens />}
-          {lens === 'risk' && <RiskLens />}
-          {lens === 'carbon' && <CarbonLens />}
-          {lens === 'ulip' && <UlipLens />}
+          {tab === 'shipments' && <ShipmentsTab />}
+          {tab === 'lens' && lens === 'operations' && <OpsLens />}
+          {tab === 'lens' && lens === 'risk' && <RiskLens />}
+          {tab === 'lens' && lens === 'carbon' && <CarbonLens />}
+          {tab === 'lens' && lens === 'ulip' && <UlipLens />}
         </motion.div>
       </AnimatePresence>
     </div>
@@ -81,7 +115,7 @@ export function LensCard() {
 /* --- Operations ------------------------------------------------------------------ */
 
 function OpsLens() {
-  const schedule = useSchedule();
+  const schedule = useSelectedSchedule();
   const nowH = useShipment((s) => s.nowH);
   const baton = batonAt(schedule, nowH, nowH);
   const chain: Role[] = ['transporter', 'broker', 'forwarder', 'exporter'];
@@ -142,10 +176,11 @@ function Swatch({ color, label, ring }: { color: string; label: string; ring?: b
 function RiskLens() {
   const customs = useShipment((s) => s.customs);
   const redSea = useShipment((s) => s.redSea);
+  const hold0494 = useShipment((s) => s.hold0494);
   const nowH = useShipment((s) => s.nowH);
   const resolved = useShipment((s) => s.resolved);
-  const schedule = useSchedule();
-  const cutoff = T.cutoff - nowH;
+  const schedule = useSelectedSchedule();
+  const cutoff = (schedule.cutoffH ?? T.cutoff) - nowH;
   const exposure = resolved.reduce((a, r) => a + r.accruedUsd, 0);
 
   return (
@@ -157,7 +192,7 @@ function RiskLens() {
           <span className="text-right">Yard</span>
         </div>
         {PORTS.map((p) => {
-          const r = portReading(p, { customs, redSea }, nowH * 3600);
+          const r = portReading(p, { customs, redSea, hold0494 }, nowH * 3600);
           const hex = TONE_HEX[r.tone];
           return (
             <div key={p.id} className="hairline grid grid-cols-[1fr_52px_44px] items-center gap-2 border-t px-2.5 py-1.5 text-[11px]">
@@ -202,17 +237,10 @@ function Metric({ label, value, tone = 'ink' }: { label: string; value: string; 
 
 /* --- Carbon ------------------------------------------------------------------------- */
 
-const LEG_LABEL: Record<string, string> = {
-  road: 'Road · Chakan → JNPT',
-  rail: 'Rail',
-  sea: 'Ocean',
-  air: 'Air · DWC → AMS',
-  inland: 'Inland · → Duisburg',
-};
-
 function CarbonLens() {
-  const schedule = useSchedule();
-  const plan = usePlan();
+  const selected = useShipment((s) => s.selected);
+  const schedule = useSelectedSchedule();
+  const plan = usePlanFor(selected);
   const max = Math.max(...schedule.legs.map((l) => l.co2Kg));
   const delta = schedule.co2Kg / plan.co2Kg - 1;
 
@@ -239,7 +267,7 @@ function CarbonLens() {
           return (
             <div key={`${l.id}-${l.routeId}`}>
               <div className="flex items-baseline justify-between text-[10.5px]">
-                <span className="font-semibold text-ink">{l.id === 'road' || l.id === 'rail' ? `${l.mode === 'rail' ? 'Rail' : 'Road'} · → JNPT` : LEG_LABEL[l.id]}</span>
+                <span className="font-semibold text-ink">{getRoute(l.routeId).label}</span>
                 <span className="num text-muted">
                   {formatKg(l.co2Kg)} · {Math.round(CO2_FACTOR[l.mode] * 1000)} g/tkm
                 </span>

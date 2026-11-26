@@ -18,6 +18,7 @@ import {
   type Mode,
   type Role,
   type RouteId,
+  type ShipmentId,
 } from '@/data/shipment';
 import { getRoute, nearestF, pointAt, type RouteGeom } from '@/lib/route';
 
@@ -79,7 +80,7 @@ export interface AlertRange {
 }
 
 export interface MilestonePlan {
-  id: MilestoneId;
+  id: string;
   meta: MilestoneMeta;
   label: string;
   plannedH: number;
@@ -88,15 +89,28 @@ export interface MilestonePlan {
   atRisk?: string;
 }
 
+/** One hand-off in a shipment's chain of custody: `role` holds the baton until `m` is done. */
+export interface BatonStep {
+  m: string;
+  role: Role;
+  task: string;
+}
+
 export interface Schedule {
+  shipmentId: ShipmentId;
   legs: LegSchedule[];
   milestones: MilestonePlan[];
-  byId: Record<MilestoneId, MilestonePlan>;
-  /** Arrival at the JNPT gate. */
-  arrivalJnptH: number;
+  byId: Record<string, MilestonePlan>;
+  /** Arrival at the gate of the port (or airport) of loading. */
+  gateInH: number;
   deliveredH: number;
   ataH: number;
   rolled: boolean;
+  /** Vessel or flight cutoff, when the shipment has one. */
+  cutoffH: number | null;
+  baton: BatonStep[];
+  /** Baton holder once every step is done. */
+  finalBaton: { role: Role; task: string };
   alert: AlertRange | null;
   risks: (AlertRange & { label: string })[];
   co2Kg: number;
@@ -113,11 +127,12 @@ const EPS = 1e-4;
 
 // --- Leg construction ---------------------------------------------------------
 
-function legFrom(
+export function legFrom(
   id: string,
   routeId: RouteId,
   group: LegGroup,
   segs: Seg[],
+  tonnes = CARGO_TONNES,
 ): LegSchedule {
   const g = getRoute(routeId);
   return {
@@ -129,12 +144,12 @@ function legFrom(
     startH: segs[0].t0,
     endH: segs[segs.length - 1].t1,
     km: g.km,
-    co2Kg: g.km * CARGO_TONNES * CO2_FACTOR[g.mode],
+    co2Kg: g.km * tonnes * CO2_FACTOR[g.mode],
   };
 }
 
 /** A leg run at constant speed from `startH`, with optional dwell stops at fractions. */
-function linear(g: RouteGeom, startH: number, speed: number, stops: { f: number; h: number }[] = []): Seg[] {
+export function linear(g: RouteGeom, startH: number, speed: number, stops: { f: number; h: number }[] = []): Seg[] {
   const hoursPerF = g.km / speed;
   const segs: Seg[] = [];
   let t = startH;
@@ -337,8 +352,8 @@ export function buildSchedule(inp: ScheduleInputs): Schedule {
       id: meta.id,
       meta,
       label: meta.id === 'transit' ? transitLabel : meta.id === 'ata' ? ataLabel : meta.label,
-      plannedH: planned[meta.id],
-      actualH: inp.actuals[meta.id],
+      plannedH: planned[meta.id as MilestoneId],
+      actualH: inp.actuals[meta.id as MilestoneId],
     };
     if (m.actualH === undefined) {
       if ((meta.id === 'leo' || meta.id === 'ebl') && !inp.docsVerified) m.blocked = 'Document mismatch';
@@ -350,13 +365,24 @@ export function buildSchedule(inp: ScheduleInputs): Schedule {
     return m;
   });
   milestones.sort((a, b) => (a.actualH ?? a.plannedH) - (b.actualH ?? b.plannedH));
-  const byId = Object.fromEntries(milestones.map((m) => [m.id, m])) as Record<MilestoneId, MilestonePlan>;
+  const byId = Object.fromEntries(milestones.map((m) => [m.id, m])) as Record<string, MilestonePlan>;
+  const viaAir = legs.some((l) => l.mode === 'air');
 
   return {
+    shipmentId: 'SHP-2611-0482',
+    cutoffH: T.cutoff,
+    baton: [
+      { m: 'gateIn', role: 'transporter', task: 'Driving to JNPT Gate 4' },
+      { m: 'leo', role: 'broker', task: 'Export customs clearance' },
+      { m: 'ebl', role: 'forwarder', task: 'Vessel loading & e-BL' },
+      { m: 'lc', role: 'exporter', task: 'LC drawdown on e-BL' },
+      { m: 'delivered', role: 'forwarder', task: viaAir ? 'Sea-air transit to Europe' : 'Ocean transit to Europe' },
+    ],
+    finalBaton: { role: 'exporter', task: `Delivered to ${ROLES.exporter.org.split(' ')[0]}'s buyer` },
     legs,
     milestones,
     byId,
-    arrivalJnptH: arrival,
+    gateInH: arrival,
     deliveredH,
     ataH,
     rolled,
@@ -456,12 +482,8 @@ export function isDoneAt(m: MilestonePlan, h: number, nowH: number): boolean {
   return !m.meta.manual && m.plannedH <= Math.min(h, nowH);
 }
 
-export function milestoneStatuses(
-  schedule: Schedule,
-  h: number,
-  nowH: number,
-): Record<MilestoneId, MilestoneStatus> {
-  const out = {} as Record<MilestoneId, MilestoneStatus>;
+export function milestoneStatuses(schedule: Schedule, h: number, nowH: number): Record<string, MilestoneStatus> {
+  const out: Record<string, MilestoneStatus> = {};
   const future = h > nowH + 1e-3;
   let activeAssigned = false;
   for (const m of schedule.milestones) {
@@ -480,14 +502,6 @@ export function milestoneStatuses(
   return out;
 }
 
-const BATON_CHAIN: { m: MilestoneId; role: Role; task: string }[] = [
-  { m: 'gateIn', role: 'transporter', task: 'Driving to JNPT Gate 4' },
-  { m: 'leo', role: 'broker', task: 'Export customs clearance' },
-  { m: 'ebl', role: 'forwarder', task: 'Vessel loading & e-BL' },
-  { m: 'lc', role: 'exporter', task: 'LC drawdown on e-BL' },
-  { m: 'delivered', role: 'forwarder', task: 'Ocean transit to Europe' },
-];
-
 export interface Baton {
   role: Role;
   task: string;
@@ -497,15 +511,12 @@ export interface Baton {
 /** Who holds responsibility for the box at time h. Projected when h is in the future. */
 export function batonAt(schedule: Schedule, h: number, nowH: number): Baton {
   const future = h > nowH + 1e-3;
-  for (const step of BATON_CHAIN) {
+  for (const step of schedule.baton) {
     const m = schedule.byId[step.m];
     const done = isDoneAt(m, h, nowH) || (future && m.plannedH <= h);
-    if (!done) {
-      const task = step.m === 'delivered' && schedule.legs.some((l) => l.mode === 'air') ? 'Sea-air transit to Europe' : step.task;
-      return { role: step.role, task, projected: future };
-    }
+    if (!done) return { role: step.role, task: step.task, projected: future };
   }
-  return { role: 'exporter', task: `Delivered to ${ROLES.exporter.org.split(' ')[0]}'s buyer`, projected: future };
+  return { ...schedule.finalBaton, projected: future };
 }
 
 export type EscrowStatus = 'released' | 'scheduled' | 'locked' | 'blocked';

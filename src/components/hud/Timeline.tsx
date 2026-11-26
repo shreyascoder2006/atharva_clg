@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { BadgeCheck, CircleDot, Lock, Pause, Play, ShieldX, Timer } from 'lucide-react';
 
-import { ESCROW, ROLES, T, type MilestoneId } from '@/data/shipment';
+import { FLEET } from '@/data/fleet';
+import { ROLES, T } from '@/data/shipment';
 import { formatOffset, formatStamp } from '@/lib/format';
 import { PALETTE, TONE_HEX } from '@/lib/palette';
 import { escrowStatus, milestoneStatuses, type MilestoneStatus } from '@/lib/schedule';
-import { useSchedule, useShipment, useViewHour } from '@/store/shipment';
+import { useSelectedSchedule, useShipment, useViewHour } from '@/store/shipment';
 import { RoleAvatar } from './ui';
 
 const MIN = T.scrubMin;
@@ -34,7 +35,7 @@ export function Timeline() {
 }
 
 function Scrubber() {
-  const schedule = useSchedule();
+  const schedule = useSelectedSchedule();
   const nowH = useShipment((s) => s.nowH);
   const viewH = useShipment((s) => s.viewH);
   const scrub = useShipment((s) => s.scrub);
@@ -42,7 +43,7 @@ function Scrubber() {
   const track = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [hover, setHover] = useState<MilestoneId | null>(null);
+  const [hover, setHover] = useState<string | null>(null);
   const live = viewH === null;
   const statuses = milestoneStatuses(schedule, h, nowH);
 
@@ -183,9 +184,11 @@ function Scrubber() {
         ))}
 
         {/* Vessel cutoff. */}
-        <div className="absolute top-[11px] h-[20px] w-px" style={{ left: `${pct(T.cutoff)}%`, background: PALETTE.amber }} title="CY cutoff">
-          <Timer size={10} className="absolute -top-3 -left-[5px]" style={{ color: PALETTE.amber }} />
-        </div>
+        {schedule.cutoffH !== null && (
+          <div className="absolute top-[11px] h-[20px] w-px" style={{ left: `${pct(schedule.cutoffH)}%`, background: PALETTE.amber }} title="Vessel cutoff">
+            <Timer size={10} className="absolute -top-3 -left-[5px]" style={{ color: PALETTE.amber }} />
+          </div>
+        )}
 
         {/* LIVE marker. */}
         <div className="absolute top-[8px]" style={{ left: `${pct(nowH)}%` }}>
@@ -257,22 +260,23 @@ function statusLabel(st: MilestoneStatus, note?: string) {
 /* --- Milestone escrow ---------------------------------------------------------------- */
 
 function EscrowBar() {
-  const schedule = useSchedule();
+  const schedule = useSelectedSchedule();
   const nowH = useShipment((s) => s.nowH);
   const h = useViewHour();
   const statuses = milestoneStatuses(schedule, h, nowH);
-  const released = ESCROW.filter((e) => escrowStatus(statuses[e.trigger]) === 'released').length;
+  const escrow = FLEET[useShipment((s) => s.selected)].escrow;
+  const released = escrow.filter((e) => escrowStatus(statuses[e.trigger]) === 'released').length;
 
   return (
     <div className="hairline mt-2.5 border-t pt-2.5 max-sm:hidden">
       <div className="mb-1.5 flex items-center justify-between">
         <span className="eyebrow">Milestone escrow</span>
         <span className="num text-[10px] text-subtle">
-          {released}/{ESCROW.length} released · smart-contract triggers on milestone proof
+          {released}/{escrow.length} released · smart-contract triggers on milestone proof
         </span>
       </div>
       <div className="grid grid-cols-2 gap-1.5 lg:grid-cols-4">
-        {ESCROW.map((e) => {
+        {escrow.map((e) => {
           const st = escrowStatus(statuses[e.trigger]);
           const tone = st === 'released' ? 'emerald' : st === 'scheduled' ? 'cobalt' : st === 'blocked' ? 'crimson' : 'slate';
           const hex = TONE_HEX[tone];

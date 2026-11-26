@@ -69,6 +69,18 @@ A light-themed command centre that connects the Exporter, Freight Forwarder, Cus
 - `npm run typecheck`, `npm run lint`, `npm test` and `npm run build`.
 - Start the dev server and run a Playwright smoke script that walks through each role, the X-Ray fix, a disruption and its recovery, the driver gate-in and the twin. It fails on any console error and takes screenshots for visual tuning.
 
+### Phase 7: Multi-route network and zoom detail
+- **Fleet model.** `data/fleet.ts` and `lib/fleet.ts` add SHP-2611-0519 (BLR → FRA by air) and SHP-2611-0494 (Surat → Mundra → Jebel Ali, under a customs hold), plus four ambient corridors. `lib/schedule.ts` is generalised over shipments, and the store holds a `selected` id.
+- **Selection.** The left sidebar gets a Shipments tab, and `RoutePicker` does screen-space route picking. Selecting a shipment flies the camera and re-targets the right panel, top bar, timeline, escrow and pin.
+- **Rendering.**
+  - `frame.ts` derives the altitude-driven LOD blends.
+  - Arcs carry emphasis-weighted width and opacity.
+  - `ShipmentMarkers` cross-fades dots into oriented low-poly vehicles with wakes and contrails.
+  - The globe shader adds roughness, shelf tint, relief and wave bumps.
+  - `VectorLines` draws coastlines and borders.
+  - `PortDioramas` builds JNPT, Mundra, Rotterdam, Jebel Ali and Suez.
+- **Camera.** The minimum distance is lowered to terminal level. Orbit and dolly speeds scale with altitude.
+
 ## Status
 
 All six phases are complete.

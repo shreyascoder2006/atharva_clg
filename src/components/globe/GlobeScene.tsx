@@ -5,12 +5,15 @@ import { useShipment } from '@/store/shipment';
 import { AnchorProjector } from './anchors';
 import { Atmosphere } from './Atmosphere';
 import { CameraRig } from './CameraRig';
-import { CargoMarker } from './CargoMarker';
 import { CongestionPillars } from './CongestionPillars';
 import { CorridorArcs } from './CorridorArcs';
 import { FrameDriver } from './frame';
 import { GlobeCore, Graticule, LandDots } from './LandDots';
 import { PlaceLabels } from './PlaceLabels';
+import { PortDioramas } from './PortDioramas';
+import { VectorLines } from './VectorLines';
+import { RoutePicker } from './RoutePicker';
+import { ShipmentMarkers } from './ShipmentMarkers';
 import { SonarField } from './SonarField';
 import { StudioLights, ViewOffset } from './Studio';
 import { UlipPulse } from './UlipPulse';
@@ -48,18 +51,21 @@ export function GlobeScene() {
         <GlobeCore />
         <Graticule />
         <LandDots />
+        <VectorLines />
+        <PortDioramas />
         <Atmosphere />
         <CongestionPillars />
         <CorridorArcs />
         <SonarField />
         <UlipPulse />
         <PlaceLabels />
-        <CargoMarker />
+        <ShipmentMarkers />
         {/* Last, so it projects labels after everything has moved this frame. */}
         <AnchorProjector />
       </Suspense>
 
       <CameraRig />
+      <RoutePicker />
     </Canvas>
   );
 }

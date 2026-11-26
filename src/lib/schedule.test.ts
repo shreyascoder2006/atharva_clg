@@ -41,8 +41,8 @@ describe('baseline schedule', () => {
   });
 
   it('reaches JNPT in a plausible time and makes the vessel cutoff', () => {
-    expect(s.arrivalJnptH).toBeGreaterThan(1.5);
-    expect(s.arrivalJnptH).toBeLessThan(4);
+    expect(s.gateInH).toBeGreaterThan(1.5);
+    expect(s.gateInH).toBeLessThan(4);
     expect(s.rolled).toBe(false);
     expect(s.byId.atd.plannedH).toBe(T.loadPlanned + T.sailAfterLoadH);
   });
@@ -108,7 +108,7 @@ describe('disruptions and recovery', () => {
   it('an unresolved ghat delay pushes gate-in by six hours', () => {
     const plain = buildSchedule(base());
     const held = buildSchedule(base({ highway: 'active', highwayAtH: 0 }));
-    expect(held.arrivalJnptH - plain.arrivalJnptH).toBeCloseTo(6, 1);
+    expect(held.gateInH - plain.gateInH).toBeCloseTo(6, 1);
     expect(held.alert?.legId).toBe('road');
   });
 
@@ -119,7 +119,7 @@ describe('disruptions and recovery', () => {
     const b = cargoAt(div, 0);
     expect(Math.abs(a.lat - b.lat)).toBeLessThan(0.01);
     expect(Math.abs(a.lon - b.lon)).toBeLessThan(0.01);
-    expect(div.arrivalJnptH).toBeLessThan(held.arrivalJnptH);
+    expect(div.gateInH).toBeLessThan(held.gateInH);
     expect(div.rolled).toBe(false);
   });
 
@@ -156,7 +156,7 @@ describe('disruptions and recovery', () => {
 
   it('confirming arrival early moves the truck to the gate at that hour', () => {
     const s = buildSchedule(base({ forcedArrivalH: 0.05 }));
-    expect(s.arrivalJnptH).toBeLessThan(0.1);
+    expect(s.gateInH).toBeLessThan(0.1);
     const c = cargoAt(s, 0.2);
     expect(c.phase).toBe('port');
   });
@@ -171,5 +171,54 @@ describe('SHA-256 fallback', () => {
     expect(sha256Js(enc('abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq'))).toBe(
       '248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1',
     );
+  });
+});
+
+describe('fleet schedules', () => {
+  it('SHP-2611-0519 is in flight at LIVE, with the forwarder holding the baton', async () => {
+    const { buildAirSchedule } = await import('@/lib/fleet');
+    const s = buildAirSchedule();
+    const c = cargoAt(s, 0);
+    expect(c.leg.mode).toBe('air');
+    expect(c.moving).toBe(true);
+    expect(batonAt(s, 0, 0).role).toBe('forwarder');
+    const st = milestoneStatuses(s, 0, 0);
+    expect(st.leo).toBe('done');
+    expect(st.ata).not.toBe('done');
+    // BLR to FRA is roughly 7,700 km: a single long-haul sector.
+    const air = s.legs.find((l) => l.mode === 'air')!;
+    expect(air.km).toBeGreaterThan(7000);
+    expect(air.endH - air.startH).toBeGreaterThan(8);
+    expect(air.endH - air.startH).toBeLessThan(11);
+  });
+
+  it('SHP-2611-0494 sits at Mundra on an RMS hold that rolls the vessel', async () => {
+    const { buildSuratSchedule, SURAT } = await import('@/lib/fleet');
+    const held = buildSuratSchedule('active', null);
+    expect(cargoAt(held, 0).phase).toBe('port');
+    expect(held.byId.leo.blocked).toBe('RMS hold');
+    expect(held.rolled).toBe(true);
+    expect(held.alert?.legId).toBe('sea');
+    expect(batonAt(held, 0, 0).role).toBe('broker');
+
+    const fixed = buildSuratSchedule('resolved', 0.1);
+    expect(fixed.rolled).toBe(false);
+    expect(fixed.byId.leo.actualH).toBeCloseTo(0.1);
+    expect(fixed.alert).toBeNull();
+    expect(held.deliveredH - fixed.deliveredH).toBeCloseTo(SURAT.nextSailingShiftH, 0);
+    expect(batonAt(fixed, 0.2, 0.2).role).toBe('forwarder');
+  });
+
+  it('every schedule hands out the same shape the HUD relies on', async () => {
+    const { buildAirSchedule, buildSuratSchedule } = await import('@/lib/fleet');
+    for (const s of [buildSchedule(base()), buildAirSchedule(), buildSuratSchedule('active', null)]) {
+      expect(s.legs.length).toBeGreaterThan(0);
+      expect(s.byId.gateIn).toBeDefined();
+      expect(s.byId.atd).toBeDefined();
+      expect(s.byId.ata).toBeDefined();
+      expect(s.byId.delivered).toBeDefined();
+      expect(s.baton.every((b) => s.byId[b.m])).toBe(true);
+      expect(s.deliveredH).toBeGreaterThan(s.ataH - 1e-6);
+    }
   });
 });

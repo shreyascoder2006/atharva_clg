@@ -1,11 +1,15 @@
 import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import clsx from 'clsx';
 
+import { FLEET } from '@/data/fleet';
 import { ROLES, type Role } from '@/data/shipment';
+import { useShipment } from '@/store/shipment';
 import { TONE_HEX, type Tone } from '@/lib/palette';
 
+/** Initials of the party playing `role` on the selected shipment. */
 export function RoleAvatar({ role, size = 24, ring = false }: { role: Role; size?: number; ring?: boolean }) {
   const meta = ROLES[role];
+  const initials = useShipment((s) => FLEET[s.selected].parties[role].initials);
   const hex = TONE_HEX[meta.tone];
   return (
     <span
@@ -20,7 +24,7 @@ export function RoleAvatar({ role, size = 24, ring = false }: { role: Role; size
       }}
       aria-label={meta.label}
     >
-      {meta.initials}
+      {initials}
     </span>
   );
 }

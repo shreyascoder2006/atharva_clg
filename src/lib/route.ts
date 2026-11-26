@@ -4,7 +4,7 @@ import { ROUTES, type Mode, type RouteDef, type RouteId } from '@/data/shipment'
 import { EARTH_RADIUS_KM, haversineKm, latLonToVector3, slerpLatLon } from '@/lib/geo';
 
 /** Surface clearance per mode, in globe radii. Ground legs hug the land; sea and air lift. */
-const BASE_ALT: Record<Mode, number> = {
+export const BASE_ALT: Record<Mode, number> = {
   road: 0.0007,
   rail: 0.0009,
   sea: 0.0012,
@@ -76,7 +76,7 @@ function build(def: RouteDef): RouteGeom {
       const b = waypointKm[touch[h + 1]];
       if (s >= a && s <= b && b > a) {
         const u = (s - a) / (b - a);
-        lift = hopLift(def.mode, (b - a) / EARTH_RADIUS_KM) * Math.sin(Math.PI * u);
+        lift = hopLift(def.mode, (b - a) / EARTH_RADIUS_KM) * (def.liftScale ?? 1) * Math.sin(Math.PI * u);
         break;
       }
     }

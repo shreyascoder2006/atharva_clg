@@ -2,9 +2,11 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 
+import { FLEET } from '@/data/fleet';
 import {
   CONTAINER,
   DISRUPTIONS,
+  FLAGSHIP,
   ESCROW,
   PLACES,
   ROLES,
@@ -17,8 +19,10 @@ import {
   type DisruptionKind,
   type MilestoneId,
   type Role,
+  type ShipmentId,
   type UlipId,
 } from '@/data/shipment';
+import { buildAirSchedule, buildSuratSchedule, type HoldState } from '@/lib/fleet';
 import { ANCHOR_MS, formatDelta, formatStamp, formatUsd } from '@/lib/format';
 import { sha256Hex } from '@/lib/hash';
 import type { LatLon } from '@/lib/geo';
@@ -103,9 +107,19 @@ interface Facts {
   rerouteMs: Record<string, number>;
   feed: FeedItem[];
   ulipLog: UlipEvent[];
+  /** SHP-2611-0494's RMS examination at Mundra. */
+  hold0494: HoldState;
+  hold0494AtH: number | null;
 }
 
+export type SidebarTab = 'shipments' | 'lens';
+
 export interface ShipmentState extends Facts {
+  /** The shipment the HUD and camera follow. */
+  selected: ShipmentId;
+  sidebarTab: SidebarTab;
+  /** Ambient network corridors on the globe. */
+  showNetwork: boolean;
   role: Role;
   lens: Lens;
   nowH: number;
@@ -124,6 +138,10 @@ export interface ShipmentState extends Facts {
   phoneOpen: boolean;
   panelOpen: boolean;
 
+  selectShipment: (id: ShipmentId) => void;
+  setSidebarTab: (tab: SidebarTab) => void;
+  toggleNetwork: () => void;
+  resolveHold0494: () => void;
   setRole: (role: Role) => void;
   setLens: (lens: Lens) => void;
   tick: () => void;
@@ -169,6 +187,8 @@ function seedFacts(): Facts {
     rerouteMs: {},
     feed: SEED_FEED.map((f) => ({ ...f, id: nextId() })).reverse(),
     ulipLog: [],
+    hold0494: 'active',
+    hold0494AtH: null,
   };
 }
 
@@ -232,6 +252,9 @@ export const useShipment = create<ShipmentState>((set, get) => {
 
   return {
     ...seedFacts(),
+    selected: FLAGSHIP,
+    sidebarTab: 'shipments',
+    showNetwork: true,
     role: 'exporter',
     lens: 'operations',
     nowH: liveHour(),
@@ -245,16 +268,45 @@ export const useShipment = create<ShipmentState>((set, get) => {
     phoneOpen: false,
     panelOpen: typeof window === 'undefined' || window.innerWidth >= 1100,
 
+    selectShipment: (id) => {
+      if (get().twin !== 'closed') return;
+      set((s) => ({ selected: id, flightNonce: s.flightNonce + 1 }));
+    },
+    setSidebarTab: (sidebarTab) => set({ sidebarTab }),
+    toggleNetwork: () => set((s) => ({ showNetwork: !s.showNetwork })),
+    resolveHold0494: () => {
+      const s = get();
+      if (s.hold0494 !== 'active') return;
+      set({ hold0494: 'resolved', hold0494AtH: s.nowH });
+      get().pushSonar(place('mundra'), 'emerald');
+      get().pushUlip('icegate', 'RMS re-assessment accepted · SB 5512094 · LEO granted');
+      feed('ai', 'SHP-2611-0494 · classification brief accepted, RMS hold lifted at Mundra', 'emerald');
+      get().pushToast({
+        tone: 'emerald',
+        title: 'RMS hold lifted · SHP-2611-0494',
+        body: 'LEO granted at Mundra. The box makes the MV Kutch Pioneer cutoff; ₹11,900 released to Kutch Maritime.',
+      });
+    },
     setRole: (role) => set((s) => ({ role, flightNonce: s.flightNonce + 1 })),
-    setLens: (lens) => set({ lens }),
+    setLens: (lens) => set({ lens, sidebarTab: 'lens' }),
     tick: () => set({ nowH: liveHour() }),
     scrub: (h) => set({ viewH: h }),
 
-    setXray: (xrayOpen) => set({ xrayOpen }),
+    setXray: (xrayOpen) =>
+      set((s) =>
+        xrayOpen && s.selected !== FLAGSHIP
+          ? { xrayOpen, selected: FLAGSHIP, flightNonce: s.flightNonce + 1 }
+          : { xrayOpen },
+      ),
     setPhone: (phoneOpen) => set({ phoneOpen }),
     togglePanel: () => set((s) => ({ panelOpen: !s.panelOpen })),
     startDive: () => {
-      if (get().twin !== 'closed') return;
+      const s = get();
+      if (s.twin !== 'closed') return;
+      if (!FLEET[s.selected].twin) {
+        s.pushToast({ tone: 'slate', title: 'No container twin for air freight', body: 'The 3D twin covers containerised ocean shipments.' }, 3200);
+        return;
+      }
       set({ twin: 'diving', twinLoaded: true, xrayOpen: false });
     },
     finishDive: () => {
@@ -399,6 +451,8 @@ export const useShipment = create<ShipmentState>((set, get) => {
       const patch: Partial<ShipmentState> = {
         disruption: { kind, startedH: s.nowH, startedMs: performance.now() },
       };
+      // The simulator acts on the flagship, so bring it into view.
+      if (s.selected !== FLAGSHIP) Object.assign(patch, { selected: FLAGSHIP, flightNonce: s.flightNonce + 1 });
       if (kind === 'highway_delay') Object.assign(patch, { highway: 'active', highwayAtH: s.nowH });
       if (kind === 'customs_hold') Object.assign(patch, { customs: 'active', customsAtH: s.nowH });
       if (kind === 'red_sea') Object.assign(patch, { redSea: 'active', redSeaAtH: s.nowH });
@@ -512,6 +566,51 @@ export function getSchedule(): Schedule {
     cached = { key, schedule: buildSchedule(inputsOf(s)) };
   }
   return cached.schedule;
+}
+
+// --- Fleet ------------------------------------------------------------------------
+
+const airSchedule = buildAirSchedule();
+let suratCache: { key: unknown[]; schedule: Schedule } | null = null;
+
+function suratSchedule(hold: HoldState, at: number | null): Schedule {
+  if (!suratCache || suratCache.key[0] !== hold || suratCache.key[1] !== at) {
+    suratCache = { key: [hold, at], schedule: buildSuratSchedule(hold, at) };
+  }
+  return suratCache.schedule;
+}
+
+/** Any shipment's schedule, for the frame loop. */
+export function getScheduleFor(id: ShipmentId): Schedule {
+  if (id === 'SHP-2611-0519') return airSchedule;
+  if (id === 'SHP-2611-0494') {
+    const s = useShipment.getState();
+    return suratSchedule(s.hold0494, s.hold0494AtH);
+  }
+  return getSchedule();
+}
+
+/** Any shipment's schedule, for components. */
+export function useScheduleFor(id: ShipmentId): Schedule {
+  const flagship = useSchedule();
+  const hold = useShipment((s) => s.hold0494);
+  const at = useShipment((s) => s.hold0494AtH);
+  if (id === 'SHP-2611-0519') return airSchedule;
+  if (id === 'SHP-2611-0494') return suratSchedule(hold, at);
+  return flagship;
+}
+
+/** The selected shipment's schedule: what the HUD shows. */
+export function useSelectedSchedule(): Schedule {
+  return useScheduleFor(useShipment((s) => s.selected));
+}
+
+/** The plan each shipment's ETA and CO2 deltas are measured against. */
+export function usePlanFor(id: ShipmentId): Schedule {
+  const flagshipPlan = usePlan();
+  if (id === 'SHP-2611-0519') return airSchedule;
+  if (id === 'SHP-2611-0494') return suratSchedule('none', null);
+  return flagshipPlan;
 }
 
 /** The hour every view is showing: the scrubber's, or LIVE. */

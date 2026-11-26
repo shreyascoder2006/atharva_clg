@@ -24,25 +24,32 @@ import {
 } from 'lucide-react';
 import type { ReactNode } from 'react';
 
+import { FLEET } from '@/data/fleet';
 import {
   DISRUPTIONS,
   DOCUMENTS,
   ESCROW,
+  FLAGSHIP,
   ROLES,
   SHIPMENT,
   T,
   ULIP,
   type Access,
+  type DocMeta,
+  type EscrowLine,
   type Role,
 } from '@/data/shipment';
 import { formatAgo, formatDuration, formatKg, formatStamp, formatUsd } from '@/lib/format';
 import { TONE_HEX, type Tone } from '@/lib/palette';
-import { batonAt, escrowStatus, milestoneStatuses } from '@/lib/schedule';
+import { batonAt, escrowStatus, milestoneStatuses, type EscrowStatus, type Schedule } from '@/lib/schedule';
 import { useSchedule, useShipment, type FeedItem } from '@/store/shipment';
+import { FleetWorkspace } from './FleetWorkspace';
+import { accessHint } from './panelUtils';
 import { Button, Chip, Dot, Eyebrow, RoleAvatar } from './ui';
 
 export function WorkspacePanel() {
   const role = useShipment((s) => s.role);
+  const selected = useShipment((s) => s.selected);
   const open = useShipment((s) => s.panelOpen);
   const toggle = useShipment((s) => s.togglePanel);
 
@@ -63,22 +70,14 @@ export function WorkspacePanel() {
             <div className="scroll-quiet flex-1 overflow-y-auto">
               <AnimatePresence mode="popLayout" initial={false}>
                 <motion.div
-                  key={role}
+                  key={`${selected}:${role}`}
                   initial={{ opacity: 0, y: 14, filter: 'blur(4px)' }}
                   animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
                   exit={{ opacity: 0, y: -10, filter: 'blur(4px)' }}
                   transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
                   className="space-y-3 px-4 pt-1 pb-4"
                 >
-                  <BatonCard role={role} />
-                  <AlertStrip role={role} />
-                  <Section title="Actions" hint="RBAC-scoped">
-                    <RoleActions role={role} />
-                  </Section>
-                  <RoleKpis role={role} />
-                  <Section title="Documents" hint={accessHint(role)}>
-                    <DocList role={role} />
-                  </Section>
+                  {selected === FLAGSHIP ? <FlagshipBody role={role} /> : <FleetWorkspace id={selected} role={role} />}
                   <Section title="Live activity" hint="all parties">
                     <Feed />
                   </Section>
@@ -100,13 +99,29 @@ export function WorkspacePanel() {
   );
 }
 
-function accessHint(role: Role) {
-  const n = DOCUMENTS.filter((d) => d.access[role] !== 'none').length;
-  return `${n} of ${DOCUMENTS.length} visible`;
+/** The flagship's full workflow: X-Ray, disruptions, driver phone, LC. */
+function FlagshipBody({ role }: { role: Role }) {
+  const schedule = useSchedule();
+  return (
+    <>
+      <BatonCard role={role} schedule={schedule} next={NEXT_FOR[role]} />
+      <AlertStrip role={role} />
+      <Section title="Actions" hint="RBAC-scoped">
+        <RoleActions role={role} />
+      </Section>
+      <RoleKpis role={role} />
+      <Section title="Documents" hint={accessHint(role, DOCUMENTS)}>
+        <DocList role={role} docs={DOCUMENTS} xray />
+      </Section>
+    </>
+  );
 }
+
 
 function PanelHeader({ role, onClose }: { role: Role; onClose: () => void }) {
   const meta = ROLES[role];
+  const selected = useShipment((s) => s.selected);
+  const party = FLEET[selected].parties[role];
   return (
     <div className="hairline flex items-center gap-3 border-b px-4 py-3">
       <AnimatePresence mode="popLayout" initial={false}>
@@ -126,10 +141,10 @@ function PanelHeader({ role, onClose }: { role: Role; onClose: () => void }) {
           <Chip tone={meta.tone}>{meta.short}</Chip>
         </div>
         <div className="truncate text-[11px] text-muted">
-          {meta.person} · {meta.org}
+          {party.person} · {party.org}
         </div>
         <div className="mt-0.5 flex items-center gap-1 text-[10px] text-subtle">
-          <MapPin size={10} /> Camera: {meta.zoneLabel}
+          <MapPin size={10} /> <span className="num">{selected.slice(-4)}</span> · {FLEET[selected].zones[role].label}
         </div>
       </div>
       <button
@@ -143,7 +158,7 @@ function PanelHeader({ role, onClose }: { role: Role; onClose: () => void }) {
   );
 }
 
-function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
+export function Section({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <section>
       <div className="mb-1.5 flex items-baseline justify-between">
@@ -164,8 +179,7 @@ const NEXT_FOR: Record<Role, string> = {
   transporter: 'Deliver to JNPT Gate 4 and confirm gate-in',
 };
 
-function BatonCard({ role }: { role: Role }) {
-  const schedule = useSchedule();
+export function BatonCard({ role, schedule, next }: { role: Role; schedule: Schedule; next: string }) {
   const nowH = useShipment((s) => s.nowH);
   const baton = batonAt(schedule, nowH, nowH);
   const mine = baton.role === role;
@@ -189,7 +203,7 @@ function BatonCard({ role }: { role: Role }) {
         </div>
         {mine && <Chip tone={ROLES[role].tone}>Your move</Chip>}
       </div>
-      {!mine && <div className="mt-2 text-[11px] text-muted">Next for you: {NEXT_FOR[role]}</div>}
+      {!mine && <div className="mt-2 text-[11px] text-muted">Next for you: {next}</div>}
     </motion.div>
   );
 }
@@ -251,7 +265,7 @@ function AlertStrip({ role }: { role: Role }) {
 
 /* --- Actions --------------------------------------------------------------------- */
 
-interface ActionSpec {
+export interface ActionSpec {
   id: string;
   label: string;
   icon: ReactNode;
@@ -362,7 +376,7 @@ function RoleActions({ role }: { role: Role }) {
   );
 }
 
-function ActionRow({ a }: { a: ActionSpec }) {
+export function ActionRow({ a }: { a: ActionSpec }) {
   if (a.done) {
     return (
       <div className="flex h-10 items-center gap-2.5 rounded-xl bg-emerald/[0.07] px-3 text-[12px] font-semibold text-emerald">
@@ -440,7 +454,7 @@ function RoleKpis({ role }: { role: Role }) {
       { label: 'Truck', value: SHIPMENT.truck, mono: true },
       {
         label: 'ETA Gate 4',
-        value: s.actuals.gateIn !== undefined ? 'Gated in' : formatDuration(Math.max(0, schedule.arrivalJnptH - nowH)),
+        value: s.actuals.gateIn !== undefined ? 'Gated in' : formatDuration(Math.max(0, schedule.gateInH - nowH)),
         tone: s.highway === 'active' ? 'crimson' : s.actuals.gateIn !== undefined ? 'emerald' : undefined,
         mono: true,
       },
@@ -449,12 +463,22 @@ function RoleKpis({ role }: { role: Role }) {
     ],
   };
 
-  const escTone: Tone = esc === 'released' ? 'emerald' : esc === 'blocked' ? 'crimson' : 'slate';
+  return <KpiGrid role={role} items={items[role]} escrow={escrow} status={esc} />;
+}
 
+export interface Kpi {
+  label: string;
+  value: string;
+  tone?: Tone;
+  mono?: boolean;
+}
+
+export function KpiGrid({ role, items, escrow, status: esc }: { role: Role; items: Kpi[]; escrow: EscrowLine; status: EscrowStatus }) {
+  const escTone: Tone = esc === 'released' ? 'emerald' : esc === 'blocked' ? 'crimson' : 'slate';
   return (
     <Section title="Shipment KPIs" hint={ROLES[role].short}>
       <div className="grid grid-cols-2 gap-1.5">
-        {items[role].map((k) => (
+        {items.map((k) => (
           <div key={k.label} className="rounded-xl bg-white/70 px-2.5 py-2 shadow-[inset_0_0_0_1px_rgb(15_23_42/0.05)]">
             <div className="text-[9.5px] font-semibold tracking-[0.08em] text-subtle uppercase">{k.label}</div>
             <div className={`${k.mono ? 'num' : ''} truncate text-[12px] font-semibold`} style={{ color: k.tone ? TONE_HEX[k.tone] : '#0f172a' }}>
@@ -488,17 +512,19 @@ const ACCESS_CHIP: Record<Access, { label: string; tone: Tone; icon: ReactNode }
   none: { label: 'No access', tone: 'slate', icon: <Lock size={10} /> },
 };
 
-function DocList({ role }: { role: Role }) {
+export function DocList({ role, docs, xray: xrayEnabled = false }: { role: Role; docs: DocMeta[]; xray?: boolean }) {
   const setXray = useShipment((s) => s.setXray);
-  const docsVerified = useShipment((s) => s.docsVerified);
-  const sorted = [...DOCUMENTS].sort((a, b) => Number(a.access[role] === 'none') - Number(b.access[role] === 'none'));
+  const flagshipDocsVerified = useShipment((s) => s.docsVerified);
+  // Only the flagship's documents carry the seeded mismatch.
+  const docsVerified = !xrayEnabled || flagshipDocsVerified;
+  const sorted = [...docs].sort((a, b) => Number(a.access[role] === 'none') - Number(b.access[role] === 'none'));
 
   return (
     <div className="overflow-hidden rounded-xl bg-white/70 shadow-[inset_0_0_0_1px_rgb(15_23_42/0.05)]">
       {sorted.map((d, i) => {
         const access = d.access[role];
         const chip = ACCESS_CHIP[access];
-        const xray = d.id === 'ci' || d.id === 'pl' || d.id === 'ebl';
+        const xray = xrayEnabled && (d.id === 'ci' || d.id === 'pl' || d.id === 'ebl');
         const mismatch = !docsVerified && (d.id === 'ci' || d.id === 'pl');
         const locked = access === 'none';
         return (
@@ -519,7 +545,7 @@ function DocList({ role }: { role: Role }) {
               </span>
             </span>
             {mismatch && !locked && <Dot tone="crimson" pulse size={6} />}
-            {d.id === 'ebl' && docsVerified && !locked && (
+            {xrayEnabled && d.id === 'ebl' && docsVerified && !locked && (
               <Chip tone="emerald">
                 <Sparkles size={9} /> SHA-256
               </Chip>
@@ -545,7 +571,7 @@ const SOURCE_LABEL: Record<string, string> = {
   ai: 'AI Co-Pilot',
 };
 
-function Feed() {
+export function Feed() {
   const feed = useShipment((s) => s.feed);
   const nowH = useShipment((s) => s.nowH);
   return (

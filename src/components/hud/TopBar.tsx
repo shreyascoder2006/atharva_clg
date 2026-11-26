@@ -14,32 +14,28 @@ import {
   Zap,
 } from 'lucide-react';
 
-import { DISRUPTIONS, ROLE_ORDER, ROLES, SHIPMENT, type DisruptionKind } from '@/data/shipment';
+import { FLEET } from '@/data/fleet';
+import { DISRUPTIONS, ROLE_ORDER, ROLES, type DisruptionKind } from '@/data/shipment';
 import { formatDelta, formatKg, formatStamp, formatTime } from '@/lib/format';
 import { TONE_HEX } from '@/lib/palette';
 import { batonAt } from '@/lib/schedule';
-import { usePlan, useSchedule, useShipment } from '@/store/shipment';
+import { usePlanFor, useSelectedSchedule, useShipment } from '@/store/shipment';
+import { useShipmentStatus } from './shipmentStatus';
 import { Chip, Dot, Glass, RoleAvatar } from './ui';
 
 /* --- Shipment card (top-left) ------------------------------------------------------ */
 
 export function ShipmentCard({ collapsed = false }: { collapsed?: boolean }) {
-  const schedule = useSchedule();
-  const plan = usePlan();
-  const docsVerified = useShipment((s) => s.docsVerified);
-  const disruption = useShipment((s) => s.disruption);
+  const id = useShipment((s) => s.selected);
+  const def = FLEET[id];
+  const schedule = useSelectedSchedule();
+  const plan = usePlanFor(id);
+  const status = useShipmentStatus(id, schedule, plan);
   const [userOpen, setOpen] = useState(() => typeof window === 'undefined' || window.innerWidth >= 768);
   // Folds away while the Co-Pilot needs the column, without forgetting the user's choice.
   const open = userOpen && !collapsed;
 
   const delta = schedule.deliveredH - plan.deliveredH;
-  const status = disruption
-    ? { tone: 'crimson' as const, label: DISRUPTIONS[disruption.kind].short }
-    : !docsVerified
-      ? { tone: 'amber' as const, label: 'Doc mismatch' }
-      : Math.abs(delta) > 1
-        ? { tone: delta > 0 ? ('amber' as const) : ('emerald' as const), label: 'Re-planned' }
-        : { tone: 'emerald' as const, label: 'On track' };
 
   return (
     <Glass className="pointer-events-auto w-[340px] rounded-2xl max-md:w-[calc(100vw-32px)]">
@@ -62,13 +58,25 @@ export function ShipmentCard({ collapsed = false }: { collapsed?: boolean }) {
       <div className="px-3.5 pt-2.5 pb-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="num text-[12px] font-semibold text-ink">{SHIPMENT.id}</span>
+            <AnimatePresence mode="popLayout" initial={false}>
+              <motion.span
+                key={id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                className="num text-[12px] font-semibold text-ink"
+              >
+                {id}
+              </motion.span>
+            </AnimatePresence>
             <Chip tone={status.tone}>
-              <Dot tone={status.tone} pulse={status.tone !== 'emerald'} size={5} />
+              <Dot tone={status.tone} pulse={status.alert} size={5} />
               {status.label}
             </Chip>
           </div>
-          <span className="text-[10.5px] font-medium text-muted">Chakan → Duisburg</span>
+          <span className="text-[10.5px] font-medium text-muted">
+            {def.origin} → {def.destination}
+          </span>
         </div>
 
         <AnimatePresence initial={false}>
@@ -81,12 +89,12 @@ export function ShipmentCard({ collapsed = false }: { collapsed?: boolean }) {
               className="overflow-hidden"
             >
               <div className="mt-2.5 grid grid-cols-3 gap-px overflow-hidden rounded-xl bg-[var(--color-hairline)]">
-                <Stat label="Container" value={SHIPMENT.container} mono small />
-                <Stat label="HS code" value={SHIPMENT.hsCode} mono />
-                <Stat label="Gross" value="12,850 kg" mono />
+                <Stat label={def.unit.label} value={def.unit.ref} mono small />
+                <Stat label="HS code" value={def.hsCode} mono />
+                <Stat label="Gross" value={`${def.grossKg.toLocaleString('en-US')} kg`} mono />
                 <Stat
-                  label="ETA Duisburg"
-                  value={formatStamp(schedule.deliveredH, 'Europe/Berlin').slice(0, 10)}
+                  label={`ETA ${def.destination}`}
+                  value={formatStamp(schedule.deliveredH, def.destTz).slice(0, 10)}
                   sub={formatDelta(delta)}
                   subTone={Math.abs(delta) < 0.25 ? 'emerald' : delta > 0 ? 'amber' : 'cobalt'}
                 />
@@ -169,7 +177,8 @@ function Logo() {
 export function RoleSwitcher() {
   const role = useShipment((s) => s.role);
   const setRole = useShipment((s) => s.setRole);
-  const schedule = useSchedule();
+  const selected = useShipment((s) => s.selected);
+  const schedule = useSelectedSchedule();
   const nowH = useShipment((s) => s.nowH);
   const baton = batonAt(schedule, nowH, nowH);
 
@@ -186,7 +195,7 @@ export function RoleSwitcher() {
             onClick={() => setRole(r)}
             className="relative flex h-9 items-center gap-2 rounded-full px-3 text-[12px] font-semibold transition-colors"
             style={{ color: active ? '#0f172a' : '#475569' }}
-            title={`${meta.label} · ${meta.zoneLabel} (${i + 1})`}
+            title={`${meta.label} · ${FLEET[selected].zones[r].label} (${i + 1})`}
           >
             {active && (
               <motion.span
@@ -219,6 +228,7 @@ export function Toolbar() {
   const setXray = useShipment((s) => s.setXray);
   const startDive = useShipment((s) => s.startDive);
   const reset = useShipment((s) => s.reset);
+  const twinOk = useShipment((s) => FLEET[s.selected].twin);
 
   return (
     <div className="pointer-events-auto flex items-center gap-2">
@@ -232,7 +242,13 @@ export function Toolbar() {
 
       <ToolButton onClick={() => setXray(true)} label="X-Ray" title="AI Document X-Ray" icon={<FileSearch size={15} />} badge={docsVerified ? undefined : '1'} />
       <span className="max-md:hidden">
-        <ToolButton onClick={startDive} label="Twin" title="Orbital-to-container 3D cargo twin" icon={<Box size={15} />} />
+        <ToolButton
+          onClick={startDive}
+          label="Twin"
+          title={twinOk ? 'Orbital-to-container 3D cargo twin' : 'The container twin covers ocean shipments; SHP-2611-0519 flies in ULDs'}
+          icon={<Box size={15} />}
+          disabled={!twinOk}
+        />
       </span>
       <DisruptionMenu />
       <button
@@ -253,17 +269,20 @@ function ToolButton({
   title,
   icon,
   badge,
+  disabled,
 }: {
   onClick: () => void;
   label: string;
   title: string;
   icon: React.ReactNode;
   badge?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className="glass relative flex h-10 items-center gap-2 rounded-xl px-3 text-[12px] font-semibold text-ink transition-all hover:bg-white/95 active:scale-[0.98]"
+      disabled={disabled}
+      className="glass relative flex h-10 items-center gap-2 rounded-xl px-3 text-[12px] font-semibold text-ink transition-all hover:bg-white/95 active:scale-[0.98] disabled:opacity-45 disabled:active:scale-100"
       title={title}
       aria-label={title}
     >
@@ -331,7 +350,7 @@ function DisruptionMenu() {
             transition={{ duration: 0.18 }}
             className="glass-strong absolute top-12 right-0 z-50 w-[330px] origin-top-right rounded-2xl p-1.5"
           >
-            <div className="eyebrow px-2.5 pt-1.5 pb-1">Disruption & demurrage simulator</div>
+            <div className="eyebrow px-2.5 pt-1.5 pb-1">Disruption simulator · SHP-2611-0482</div>
             {(Object.keys(DISRUPTIONS) as DisruptionKind[]).map((k) => {
               const d = DISRUPTIONS[k];
               const why = reason(k);
