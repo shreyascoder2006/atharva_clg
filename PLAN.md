@@ -97,7 +97,7 @@ All eight phases are complete.
 | `npm test` | 32/32 passing (schedule engine, fleet schedules, ISO 6346, SHA-256, routes, marketplace badges, party reassignment, comms unread state, data integrity) |
 | `npm run build` | passes; vendors split into `three`, `r3f`, `motion` and `vendor`; twin, coastline vectors and each dashboard lazy-loaded |
 | Dashboard OS smoke (Playwright, 28 checks: every route, back button, globe pause/resume, nothing covering the globe canvas, document resolve, partner assignment, comms posting as a role, disruption reaching Financials and Comms, Track on 3D Globe for live and watch-list shipments, rail toggle, keyboard navigation, mobile) | all pass · 0 console errors, 0 warnings |
-| Control Tower smoke (Playwright, 42 UI steps across every role, lens, disruption, recovery, X-Ray, phone, twin, multi-route selection and zoom) | re-run in progress at this commit; result recorded in the next commit |
+| Control Tower smoke (Playwright, 42 UI steps across every role, lens, disruption, recovery, X-Ray, phone, twin, multi-route selection and zoom) | all 42 steps pass · 0 console errors, 0 warnings · route click selects 0519, wheel zoom reaches r = 1.0032 |
 
 The verification surfaced and fixed these deviations from the plan:
 - drei `<Html>` was replaced by a single-root anchor projector. React 19 logs an error when `<Html>` unmounts its per-label root.
