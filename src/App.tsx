@@ -165,13 +165,14 @@ export default function App() {
         <ControlTower active={tower} />
       </motion.div>
 
-      {/* Dashboards, right of the rail. */}
-      <div className="absolute inset-y-0 right-0 left-[var(--rail)] transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+      {/* Dashboards, right of the rail. The container itself is click-through: on the
+          Control Tower it is empty and must not swallow the globe's drag, zoom and picking. */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 left-[var(--rail)] transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
         <AnimatePresence initial={false}>
           {!tower && (
             <motion.main
               key={view}
-              className="absolute inset-0 bg-[#F4F7FB] bg-[radial-gradient(90%_60%_at_70%_0%,#ffffff_0%,rgb(244_247_251/0)_70%)]"
+              className="pointer-events-auto absolute inset-0 bg-[#F4F7FB] bg-[radial-gradient(90%_60%_at_70%_0%,#ffffff_0%,rgb(244_247_251/0)_70%)]"
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] } }}
               exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}

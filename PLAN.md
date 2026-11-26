@@ -96,7 +96,7 @@ All eight phases are complete.
 | `npm run lint` | 0 errors, 0 warnings |
 | `npm test` | 32/32 passing (schedule engine, fleet schedules, ISO 6346, SHA-256, routes, marketplace badges, party reassignment, comms unread state, data integrity) |
 | `npm run build` | passes; vendors split into `three`, `r3f`, `motion` and `vendor`; twin, coastline vectors and each dashboard lazy-loaded |
-| Dashboard OS smoke (Playwright, 27 checks: every route, back button, globe pause/resume, document resolve, partner assignment, comms posting as a role, disruption reaching Financials and Comms, Track on 3D Globe for live and watch-list shipments, rail toggle, keyboard navigation, mobile) | all pass · 0 console errors, 0 warnings |
+| Dashboard OS smoke (Playwright, 28 checks: every route, back button, globe pause/resume, nothing covering the globe canvas, document resolve, partner assignment, comms posting as a role, disruption reaching Financials and Comms, Track on 3D Globe for live and watch-list shipments, rail toggle, keyboard navigation, mobile) | all pass · 0 console errors, 0 warnings |
 | Control Tower smoke (Playwright, 42 UI steps across every role, lens, disruption, recovery, X-Ray, phone, twin, multi-route selection and zoom) | re-run in progress at this commit; result recorded in the next commit |
 
 The verification surfaced and fixed these deviations from the plan:
@@ -105,3 +105,4 @@ The verification surfaced and fixed these deviations from the plan:
 - `THREE.Clock` is deprecated in three r183+ and constructed inside R3F 9. Exactly that one warning is filtered through three's `setConsoleFunction`.
 - Phase 7: sampling all six high-resolution land patches on every pixel halved the software-rendered frame rate. Patches are now switched by a uniform weight (altitude and facing), and anisotropy is capped at 8x.
 - Phase 8: a fixed-position dialog inside the page transition wrapper (which is transformed) was positioned against the wrapper, not the viewport; the CBAM dialog is portalled to `document.body`.
+- Phase 8: the empty dashboard container sat over the globe on the Control Tower and swallowed its drag, zoom and route clicks (HUD buttons, layered above it, still worked). The Control Tower smoke caught it. The container is now click-through, and the dashboard smoke asserts the canvas is on top.
