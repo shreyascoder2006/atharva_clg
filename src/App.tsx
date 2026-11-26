@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, type CSSProperties } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 
 import { GlobeScene } from '@/components/globe/GlobeScene';
+import { globeShadow } from '@/components/globe/shadowRef';
 import { CoPilot } from '@/components/hud/CoPilot';
 import { LensDock, SidebarCard } from '@/components/hud/LensDock';
 import { Timeline } from '@/components/hud/Timeline';
@@ -172,10 +173,10 @@ export default function App() {
           {!tower && (
             <motion.main
               key={view}
-              className="pointer-events-auto absolute inset-0 bg-[#F4F7FB] bg-[radial-gradient(90%_60%_at_70%_0%,#ffffff_0%,rgb(244_247_251/0)_70%)]"
-              initial={{ opacity: 0, y: 14 }}
-              animate={{ opacity: 1, y: 0, transition: { duration: 0.38, ease: [0.16, 1, 0.3, 1] } }}
-              exit={{ opacity: 0, y: -8, transition: { duration: 0.18 } }}
+              className="pointer-events-auto absolute inset-0 bg-[radial-gradient(120%_95%_at_50%_8%,#FAFCFF_0%,#F1F6FC_46%,#E6EFFA_100%)]"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0, transition: { duration: 0.24, ease: [0.16, 1, 0.3, 1] } }}
+              exit={{ opacity: 0, y: -6, transition: { duration: 0.14 } }}
             >
               <Suspense fallback={<PageSkeleton />}>
                 <Page view={view} />
@@ -239,6 +240,15 @@ function ControlTower({ active }: { active: boolean }) {
         animate={{ scale: twin === 'open' ? 1.04 : 1, filter: twin === 'open' ? 'blur(6px)' : 'blur(0px)' }}
         transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       >
+        {/* Diffused contact shadow, behind the transparent canvas; placed per frame. */}
+        <div
+          ref={(el) => {
+            globeShadow.current = el;
+          }}
+          aria-hidden
+          className="pointer-events-none absolute top-0 left-0 rounded-[50%] opacity-0 blur-[14px] will-change-transform"
+          style={{ background: 'radial-gradient(closest-side, rgba(15,23,42,0.20), rgba(15,23,42,0.08) 55%, rgba(15,23,42,0) 100%)' }}
+        />
         <GlobeScene active={active} />
         <GlobeOverlay />
       </motion.div>

@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { CatmullRomCurve3, Color, Mesh, TubeGeometry } from 'three';
 
 import { AMBIENT_ROUTES } from '@/data/fleet';
+import { LANE_BY_ID } from '@/data/lanes';
 import { FLAGSHIP, SHIPMENT_IDS, type RouteId, type ShipmentId } from '@/data/shipment';
 import { MODE_HEX, PALETTE } from '@/lib/palette';
 import { arcAt, BASE_ALT, getRoute } from '@/lib/route';
@@ -47,10 +48,13 @@ const CARBON_LO = new Color(PALETTE.emerald);
 const CARBON_HI = new Color(PALETTE.amber);
 const AMBIENT = new Color('#4F6FA8');
 const FOCUSED = new Color('#2563EB');
+const BOOKED = new Color('#3B6FE6');
 
 const REVEAL_MS = 1700;
 /** Opacity of a shipment that is on the network but not in focus. */
 const BACKGROUND_OPACITY = 0.35;
+/** Ambient network corridors: other trade, drawn quieter still. */
+const AMBIENT_OPACITY = 0.28;
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const lensDim = (lens: Lens) => (lens === 'ulip' ? 1 : lens === 'risk' ? 0.35 : 0);
@@ -248,21 +252,27 @@ function ShipmentArcs({ id }: { id: ShipmentId }) {
  * Other trade on the network: thin translucent lanes with slow micro-pulses, low over
  * the sea so they read as background to the three shipments.
  */
-function AmbientArc({ routeId, seed }: { routeId: RouteId; seed: number }) {
+/**
+ * A corridor that is not one of the three live workflows: the ambient network, or a
+ * lane booked from the Shipments dashboard (`booked`), which is drawn bolder in cobalt
+ * and draws itself in the first time it is on screen.
+ */
+function AmbientArc({ routeId, seed, booked = false }: { routeId: RouteId; seed: number; booked?: boolean }) {
   const geometry = tubeFor(routeId);
   const material = useMemo(() => {
     const u = makeTubeUniforms(0.7, 0.000012);
-    u.uColor.value.copy(AMBIENT);
-    u.uDone.value.copy(AMBIENT);
+    u.uColor.value.copy(booked ? BOOKED : AMBIENT);
+    u.uDone.value.copy(booked ? BOOKED : AMBIENT);
     u.uComets.value = Math.max(4, Math.round(worldLength(routeId) / 0.09));
     u.uSpeed.value = 0.07 + seed * 0.013;
     u.uPhase.value = seed * 0.37;
     u.uCometGain.value = 0.55;
     return makeCoreMaterial(u);
-  }, [routeId, seed]);
+  }, [routeId, seed, booked]);
   const shown = useRef(1);
   // Lit up while a watch-list shipment on this corridor is being tracked.
   const lit = useRef(0);
+  const bornAt = useRef<number | null>(null);
 
   useEffect(() => () => material.dispose(), [material]);
 
@@ -274,15 +284,36 @@ function AmbientArc({ routeId, seed }: { routeId: RouteId; seed: number }) {
     u.uTime.value = clock.elapsedTime;
     const k = 1 - Math.exp(-dt * 6);
     lit.current += ((st.focus?.routeId === routeId ? 1 : 0) - lit.current) * k;
-    u.uPx.value = lerp(0.72, 1.5, lit.current) * lerp(1, 0.6, frame.lod.thin);
-    u.uColor.value.copy(AMBIENT).lerp(FOCUSED, lit.current);
-    u.uCometGain.value = lerp(0.55, 1.4, lit.current);
+    u.uPx.value = lerp(booked ? 1.1 : 0.72, 1.5, lit.current) * lerp(1, 0.6, frame.lod.thin);
+    u.uColor.value.copy(booked ? BOOKED : AMBIENT).lerp(FOCUSED, lit.current);
+    u.uCometGain.value = lerp(booked ? 1.0 : 0.55, 1.4, lit.current);
+    if (booked) {
+      // Draw on from the origin, starting the first frame the globe is rendering.
+      if (bornAt.current === null) bornAt.current = clock.elapsedTime;
+      const t = (clock.elapsedTime - bornAt.current) / 2.2;
+      u.uReveal.value = t >= 1 ? 1.001 : 1 - (1 - t) ** 3;
+      u.uOpacity.value = lerp(0.72, 0.95, lit.current);
+      return;
+    }
     shown.current += ((st.showNetwork ? 1 : 0) - shown.current) * k;
-    u.uOpacity.value = lerp(BACKGROUND_OPACITY, 0.95, lit.current) * shown.current;
+    u.uOpacity.value = lerp(AMBIENT_OPACITY, 0.95, lit.current) * shown.current;
     u.uDim.value += (lensDim(st.lens) - u.uDim.value) * 0.12;
   });
 
   return <mesh geometry={geometry} material={material} frustumCulled={false} raycast={() => null} renderOrder={0} />;
+}
+
+/** Lanes booked from the Shipments dashboard; one arc per lane however many bookings. */
+function BookedArcs() {
+  const booked = useShipment((s) => s.customShipments);
+  const lanes = [...new Set(booked.map((c) => c.laneId))];
+  return (
+    <>
+      {lanes.map((l, i) => (
+        <AmbientArc key={l} routeId={LANE_BY_ID[l].route.id as RouteId} seed={i + 5} booked />
+      ))}
+    </>
+  );
 }
 
 export function CorridorArcs() {
@@ -291,6 +322,7 @@ export function CorridorArcs() {
       {AMBIENT_ROUTES.map((r, i) => (
         <AmbientArc key={r.routeId} routeId={r.routeId} seed={i + 1} />
       ))}
+      <BookedArcs />
       {SHIPMENT_IDS.map((id) => (
         <ShipmentArcs key={id} id={id} />
       ))}

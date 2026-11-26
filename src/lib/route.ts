@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 
+import { LANES } from '@/data/lanes';
 import { ROUTES, type Mode, type RouteDef, type RouteId } from '@/data/shipment';
 import { EARTH_RADIUS_KM, haversineKm, latLonToVector3, slerpLatLon } from '@/lib/geo';
 
@@ -107,10 +108,23 @@ function build(def: RouteDef): RouteGeom {
 
 const cache = new Map<RouteId, RouteGeom>();
 
+/**
+ * Routes that exist only at runtime: the lanes a shipment can be booked on from the
+ * Shipments dashboard. Their ids are not static RouteIds, so they are cast at the edge.
+ */
+const dynamic = new Map<string, RouteDef>(LANES.map((l) => [l.route.id, l.route]));
+
+export function registerRoute(def: RouteDef): RouteId {
+  dynamic.set(def.id, def);
+  return def.id as RouteId;
+}
+
 export function getRoute(id: RouteId): RouteGeom {
   let g = cache.get(id);
   if (!g) {
-    g = build(ROUTES[id]);
+    const def = (ROUTES as Record<string, RouteDef>)[id] ?? dynamic.get(id);
+    if (!def) throw new Error(`Unknown route ${id}`);
+    g = build(def);
     cache.set(id, g);
   }
   return g;

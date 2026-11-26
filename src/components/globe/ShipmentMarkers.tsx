@@ -303,9 +303,86 @@ function HubRing({ id, place, milestone }: { id: ShipmentId; place: keyof typeof
   );
 }
 
+
+/* --- Radar aura ---------------------------------------------------------------------- */
+
+const radarMaterial = () =>
+  new ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    side: DoubleSide,
+    uniforms: { uColor: { value: new Color(PALETTE.cobalt) }, uTime: { value: 0 }, uOpacity: { value: 0 } },
+    vertexShader: billboardVertex,
+    fragmentShader: /* glsl */ `
+      uniform vec3 uColor;
+      uniform float uTime;
+      uniform float uOpacity;
+      varying vec2 vUv;
+      const float TAU = 6.2831853;
+      // Hairline at radius r0, a pixel or so wide whatever the scale.
+      float hair(float r, float r0, float w) { return 1.0 - smoothstep(0.0, w * 1.3, abs(r - r0)); }
+      void main() {
+        vec2 p = vUv * 2.0 - 1.0;
+        float r = length(p);
+        if (r > 1.0) discard;
+        float w = fwidth(r);
+        float a = atan(p.y, p.x);
+        float rings = hair(r, 0.97, w) + hair(r, 0.66, w) * 0.7 + hair(r, 0.36, w) * 0.5;
+        // Tick marks around the outer ring, every 15 degrees.
+        float ticks = step(0.82, fract(a / TAU * 24.0)) * (1.0 - smoothstep(0.86, 0.9, r)) * smoothstep(0.8, 0.84, r) * 0.7;
+        // The sweep: a bright leading edge with a tail that fades behind it.
+        float behind = mod(uTime * 1.7 - a, TAU);
+        float sweep = (1.0 - smoothstep(0.0, 1.5, behind)) * (1.0 - smoothstep(0.55, 1.0, r)) * 0.38;
+        float edge = (1.0 - smoothstep(0.0, 0.05, behind)) * (1.0 - smoothstep(0.9, 1.0, r)) * 0.6;
+        gl_FragColor = vec4(uColor, (rings * 0.9 + ticks + sweep + edge) * uOpacity);
+      }`,
+  });
+
+const Z_AXIS = new Vector3(0, 0, 1);
+const radarGround = new Vector3();
+const radarUp = new Vector3();
+
+/**
+ * A rotating radar ring on the surface beneath the selected shipment's vehicle, held
+ * at a constant screen size. It marks the hero shipment at every zoom, including an
+ * aircraft at cruise altitude, where the stem ties the two together.
+ */
+function RadarAura() {
+  const ref = useRef<Mesh>(null);
+  const mat = useMemo(() => radarMaterial(), []);
+  const shown = useRef(0);
+
+  useFrame(({ camera, clock }, dt) => {
+    const m = ref.current;
+    const st = useShipment.getState();
+    const t = frame.tracks[st.selected];
+    if (!m || !t) return;
+    radarUp.copy(t.position).normalize();
+    const lift = Math.max(0.00003, frame.altitude * 0.0005);
+    radarGround.copy(radarUp).multiplyScalar(1 + lift);
+    const vis = Math.max(0, Math.min(1, (facing(camera, radarUp) + 0.02) / 0.15)) * (st.twin === 'closed' ? 1 : 0);
+    shown.current += (vis - shown.current) * (1 - Math.exp(-dt * 6));
+    m.visible = shown.current > 0.01;
+    if (!m.visible) return;
+    m.position.copy(radarGround);
+    m.quaternion.setFromUnitVectors(Z_AXIS, radarUp);
+    m.scale.setScalar(pxAt(camera, radarGround) * lerp(30, 58, frame.lod.vehicles));
+    mat.uniforms.uTime.value = clock.elapsedTime;
+    mat.uniforms.uOpacity.value = shown.current * 0.85;
+    mat.uniforms.uColor.value.set(t.schedule.alert ? PALETTE.crimson : PALETTE.cobalt);
+  });
+
+  return (
+    <mesh ref={ref} material={mat} raycast={() => null} renderOrder={4}>
+      <planeGeometry args={[2, 2]} />
+    </mesh>
+  );
+}
+
 export function ShipmentMarkers() {
   return (
     <group>
+      <RadarAura />
       {SHIPMENT_IDS.flatMap((id) => FLEET[id].hubs.map((h) => <HubRing key={`${id}:${h.place}`} id={id} {...h} />))}
       {SHIPMENT_IDS.map((id) => (
         <ShipmentMarker key={id} id={id} />

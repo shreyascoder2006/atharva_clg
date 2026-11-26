@@ -139,6 +139,64 @@ export const QUOTES: Record<ShipmentId, Quote[]> = {
   ],
 };
 
+/* --- Priority scoring ---------------------------------------------------------------- */
+
+export type Priority = 'cost' | 'speed' | 'carbon' | 'reliability';
+export type Weights = Record<Priority, number>;
+
+/**
+ * Presets lead decisively with their criterion; the small secondary weights only break
+ * near-ties. A blended mix is what the sliders are for.
+ */
+export const PRIORITY_PRESETS: { id: string; label: string; weights: Weights }[] = [
+  { id: 'balanced', label: 'Balanced', weights: { cost: 50, speed: 50, carbon: 50, reliability: 50 } },
+  { id: 'cost', label: 'Lowest Cost', weights: { cost: 100, speed: 10, carbon: 5, reliability: 15 } },
+  { id: 'speed', label: 'Fastest Transit', weights: { cost: 10, speed: 100, carbon: 0, reliability: 20 } },
+  { id: 'carbon', label: 'Greenest CO₂e', weights: { cost: 10, speed: 0, carbon: 100, reliability: 5 } },
+];
+
+export interface ScoredQuote {
+  quote: Quote;
+  /** 0–100: how well the bid fits the weights. */
+  score: number;
+  /** Each criterion normalised to 0–1 across the bids, 1 best. */
+  parts: Record<Priority, number>;
+}
+
+/**
+ * Re-score bids for a set of priority weights. Each criterion is min-max normalised
+ * across the bids on the table, so the score says how a bid ranks here, not globally.
+ * Speed blends transit time with customs clearance; reliability blends on-time
+ * performance with the demurrage rate.
+ */
+export function scoreQuotes(quotes: Quote[], w: Weights): ScoredQuote[] {
+  const norm = (vals: number[], lowerBetter: boolean) => {
+    const lo = Math.min(...vals);
+    const hi = Math.max(...vals);
+    return vals.map((v) => (hi === lo ? 1 : lowerBetter ? (hi - v) / (hi - lo) : (v - lo) / (hi - lo)));
+  };
+  const p = quotes.map((q) => PARTNERS[q.partner]);
+  const cost = norm(quotes.map((q) => q.priceUsd), true);
+  const transit = norm(quotes.map((q) => q.transitDays), true);
+  const customs = norm(p.map((x) => x.customsHrs), true);
+  const carbon = norm(p.map((x) => x.gPerTkm), true);
+  const otp = norm(p.map((x) => x.otp), false);
+  const dem = norm(p.map((x) => x.demurrageRate), true);
+  const total = w.cost + w.speed + w.carbon + w.reliability || 1;
+  return quotes
+    .map((quote, i) => {
+      const parts = {
+        cost: cost[i],
+        speed: 0.75 * transit[i] + 0.25 * customs[i],
+        carbon: carbon[i],
+        reliability: 0.7 * otp[i] + 0.3 * dem[i],
+      };
+      const score = (100 * (w.cost * parts.cost + w.speed * parts.speed + w.carbon * parts.carbon + w.reliability * parts.reliability)) / total;
+      return { quote, score, parts };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
 export type Badge = 'Best Value' | 'Fastest Customs' | 'Lowest Carbon' | 'Most Reliable';
 
 /** Highlight badges for a shipment's bids: each one goes to the single best partner. */

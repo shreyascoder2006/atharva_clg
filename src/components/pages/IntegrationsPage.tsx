@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   Activity,
+  ArrowRight,
   BadgeCheck,
   Building2,
   Download,
@@ -20,22 +21,29 @@ import {
   Truck,
   Webhook,
   X,
+  Zap,
 } from 'lucide-react';
 
 import { Card, DashPage, Pill, ShipmentPicker } from '@/components/dash/kit';
 import { usePortfolio } from '@/components/dash/usePortfolio';
+import { CountUp } from '@/components/hud/ui';
 import { FLEET } from '@/data/fleet';
 import { CO2_FACTOR, FLAGSHIP, ROUTES, ULIP, type Mode, type ShipmentId, type UlipId } from '@/data/shipment';
 import { formatKg, hourToDate } from '@/lib/format';
 import { sha256Hex } from '@/lib/hash';
-import { MODE_HEX, TONE_HEX } from '@/lib/palette';
-import type { Schedule } from '@/lib/schedule';
+import { PALETTE, TONE_HEX } from '@/lib/palette';
+import { carbonIntensity, type Schedule } from '@/lib/schedule';
 import { ULIP_BY_ID, useScheduleFor, useShipment, type UlipEvent } from '@/store/shipment';
 
 const MODE_ICON = { road: Truck, rail: TrainFront, sea: Ship, air: Plane } as const;
 const MODE_LABEL: Record<Mode, string> = { road: 'Road', rail: 'Rail', sea: 'Sea', air: 'Air' };
 
+/** Amber for carbon-heavy modes (road, air), emerald for clean ones (sea, rail), on the GLEC intensity scale. */
+const intensityHex = (mode: Mode) => (carbonIntensity(mode) >= 0.5 ? PALETTE.amber : PALETTE.emerald);
+
 export default function IntegrationsPage() {
+  // Mode shifts per shipment; the CBAM Green Certificate reads the flagship's.
+  const [shifts, setShifts] = useState<Shifts>({});
   return (
     <DashPage
       view="integrations"
@@ -48,8 +56,8 @@ export default function IntegrationsPage() {
         <FleetByMode />
       </div>
       <div className="mt-4 grid grid-cols-3 gap-4 max-xl:grid-cols-1">
-        <GreenCorridors />
-        <CbamCard />
+        <ModeShiftSimulator shifts={shifts} onChange={setShifts} />
+        <CbamCard shifts={shifts[FLAGSHIP] ?? {}} />
       </div>
 
       <SectionHead icon={<Webhook size={14} />} eyebrow="Section B" title="ULIP live API topology" className="mt-8" />
@@ -92,7 +100,7 @@ function LegEmissions() {
           return (
             <li key={`${l.id}-${i}`} className="grid grid-cols-[minmax(0,1.3fr)_minmax(0,2fr)_80px] items-center gap-3 max-sm:grid-cols-1 max-sm:gap-1">
               <div className="flex min-w-0 items-center gap-2">
-                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg" style={{ color: MODE_HEX[l.mode], background: `color-mix(in oklab, ${MODE_HEX[l.mode]} 10%, white)` }}>
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg" style={{ color: intensityHex(l.mode), background: `color-mix(in oklab, ${intensityHex(l.mode)} 10%, white)` }}>
                   <Icon size={14} />
                 </span>
                 <div className="min-w-0 leading-tight">
@@ -105,7 +113,7 @@ function LegEmissions() {
               <div className="h-3 overflow-hidden rounded-full bg-slate-900/[0.05]">
                 <motion.div
                   className="h-full rounded-full"
-                  style={{ background: `linear-gradient(90deg, color-mix(in oklab, ${MODE_HEX[l.mode]} 55%, white), ${MODE_HEX[l.mode]})` }}
+                  style={{ background: `linear-gradient(90deg, color-mix(in oklab, ${intensityHex(l.mode)} 55%, white), ${intensityHex(l.mode)})` }}
                   initial={{ width: 0 }}
                   animate={{ width: `${Math.max(1.5, (l.co2Kg / max) * 100)}%` }}
                   transition={{ duration: 0.8, delay: i * 0.06, ease: [0.16, 1, 0.3, 1] }}
@@ -119,7 +127,7 @@ function LegEmissions() {
       <div className="mt-4 flex flex-wrap gap-2 border-t border-[rgba(15,23,42,0.06)] pt-3">
         {byMode.map(({ m, kg }) => (
           <span key={m} className="inline-flex items-center gap-1.5 rounded-lg bg-slate-900/[0.03] px-2 py-1 text-[11px]">
-            <span className="h-2 w-2 rounded-full" style={{ background: MODE_HEX[m] }} />
+            <span className="h-2 w-2 rounded-full" style={{ background: intensityHex(m) }} />
             <span className="text-muted">{MODE_LABEL[m]}</span>
             <span className="num font-semibold text-ink">{formatKg(kg)}</span>
             <span className="num text-subtle">{((kg / schedule.co2Kg) * 100).toFixed(0)}%</span>
@@ -140,7 +148,7 @@ function FleetByMode() {
     <Card eyebrow="Fleet Scope 3 by mode" title={`${formatKg(sum)} CO₂e across ${rows.length} shipments`}>
       <div className="flex h-4 overflow-hidden rounded-full">
         {modes.map((m) => (
-          <motion.div key={m} style={{ background: MODE_HEX[m] }} initial={{ width: 0 }} animate={{ width: `${(totals[m] / sum) * 100}%` }} transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }} className="h-full border-r-2 border-white last:border-0" />
+          <motion.div key={m} style={{ background: intensityHex(m) }} initial={{ width: 0 }} animate={{ width: `${(totals[m] / sum) * 100}%` }} transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }} className="h-full border-r-2 border-white last:border-0" />
         ))}
       </div>
       <ul className="mt-4 space-y-2.5">
@@ -148,7 +156,7 @@ function FleetByMode() {
           const Icon = MODE_ICON[m];
           return (
             <li key={m} className="flex items-center gap-2.5 text-[12px]">
-              <Icon size={14} style={{ color: MODE_HEX[m] }} />
+              <Icon size={14} style={{ color: intensityHex(m) }} />
               <span className="flex-1 text-muted">{MODE_LABEL[m]}</span>
               <span className="num font-semibold text-ink">{formatKg(totals[m])}</span>
               <span className="num w-[40px] text-right text-[11px] text-subtle">{((totals[m] / sum) * 100).toFixed(0)}%</span>
@@ -156,69 +164,124 @@ function FleetByMode() {
           );
         })}
       </ul>
-      <p className="mt-4 rounded-xl bg-sky/[0.06] p-2.5 text-[11px] leading-snug text-muted shadow-[inset_0_0_0_1px_rgb(2_132_199/0.12)]">
-        <span className="font-semibold text-sky">Air is {((totals.air / sum) * 100).toFixed(0)}% of emissions</span> from a single 1.8 t shipment. Moving one pharma lane to sea-air would cut more CO₂e than every road leg combined.
+      <p className="mt-4 rounded-xl bg-amber/[0.06] p-2.5 text-[11px] leading-snug text-muted shadow-[inset_0_0_0_1px_rgb(217_119_6/0.15)]">
+        <span className="font-semibold text-amber">Air is {((totals.air / sum) * 100).toFixed(0)}% of emissions</span> from a single 1.8 t shipment. Moving one pharma lane to sea-air would cut more CO₂e than every road leg combined.
       </p>
     </Card>
   );
 }
 
-/* --- Green corridors ---------------------------------------------------------------------- */
+/* --- Mode-shift carbon simulator ---------------------------------------------------- */
 
-interface Alternative {
-  id: ShipmentId;
-  title: string;
-  current: number;
-  green: number;
-  cost: string;
-  time: string;
+/**
+ * The greener alternative for each mode, as an emission factor per tonne-km. Electric
+ * rail uses an Indian grid-mix factor, not zero; LNG and SAF are well-to-wheel.
+ */
+const SHIFT: Record<Mode, { to: string; factor: number; kmMult: number; cost: string; time: string; icon: typeof Truck }> = {
+  road: { to: 'Electric rail · CONCOR', factor: 0.017, kmMult: 1.12, cost: '+$140', time: '+6h', icon: TrainFront },
+  rail: { to: 'Electric traction', factor: 0.017, kmMult: 1, cost: '+$40', time: '±0h', icon: TrainFront },
+  sea: { to: 'LNG dual-fuel vessel', factor: CO2_FACTOR.sea * 0.85, kmMult: 1, cost: '+$95', time: '±0h', icon: Ship },
+  air: { to: '30% SAF blend · book & claim', factor: CO2_FACTOR.air * 0.76, kmMult: 1, cost: '+$610', time: '±0h', icon: Plane },
+};
+
+export type Shifts = Partial<Record<ShipmentId, Record<number, boolean>>>;
+
+/** Each leg's CO2e with and without its shift applied. */
+function shiftedLegs(schedule: Schedule, on: Record<number, boolean> = {}) {
+  return schedule.legs.map((l, i) => {
+    const tkm = l.co2Kg / CO2_FACTOR[l.mode];
+    const green = tkm * SHIFT[l.mode].kmMult * SHIFT[l.mode].factor;
+    return { leg: l, i, current: l.co2Kg, green, applied: !!on[i], kg: on[i] ? green : l.co2Kg };
+  });
 }
 
-/** Re-price each leg's tonne-km at the factor the greener option would use. */
-function greenFor(id: ShipmentId, schedule: Schedule): Alternative {
-  const tkm = (l: Schedule['legs'][number]) => l.co2Kg / CO2_FACTOR[l.mode];
-  const current = schedule.co2Kg;
-  let green = 0;
-  for (const l of schedule.legs) {
-    if (id === FLAGSHIP) green += l.mode === 'road' ? tkm(l) * 1.12 * CO2_FACTOR.rail : l.mode === 'sea' ? l.co2Kg * 0.85 : l.co2Kg;
-    else if (id === 'SHP-2611-0519') green += l.mode === 'air' ? l.co2Kg * 0.76 : l.co2Kg;
-    else green += l.mode === 'road' && l.group === 'origin' ? tkm(l) * 1.1 * CO2_FACTOR.sea + 0.03 * l.co2Kg : l.co2Kg;
-  }
-  if (id === FLAGSHIP) return { id, title: 'Rail to JNPT via Talegaon ICD, LNG dual-fuel vessel', current, green, cost: '+$140', time: '+6h' };
-  if (id === 'SHP-2611-0519') return { id, title: '30% SAF blend on SKB 761 (book and claim)', current, green, cost: '+$610', time: '±0h' };
-  return { id, title: 'Coastal feeder from Hazira instead of road to Mundra', current, green, cost: '−$90', time: '+14h' };
-}
+function ModeShiftSimulator({ shifts, onChange }: { shifts: Shifts; onChange: (s: Shifts) => void }) {
+  const id = useShipment((s) => s.selected);
+  const schedule = useScheduleFor(id);
+  const on = shifts[id] ?? {};
+  const legs = shiftedLegs(schedule, on);
+  const base = legs.reduce((a, l) => a + l.current, 0);
+  const sim = legs.reduce((a, l) => a + l.kg, 0);
+  const saved = base - sim;
+  const pct = (saved / base) * 100;
+  const set = (next: Record<number, boolean>) => onChange({ ...shifts, [id]: next });
 
-function GreenCorridors() {
-  const a = useScheduleFor('SHP-2611-0482');
-  const b = useScheduleFor('SHP-2611-0519');
-  const c = useScheduleFor('SHP-2611-0494');
-  const alts = [greenFor('SHP-2611-0482', a), greenFor('SHP-2611-0519', b), greenFor('SHP-2611-0494', c)];
-  const saved = alts.reduce((x, y) => x + (y.current - y.green), 0);
   return (
-    <Card className="col-span-2 max-xl:col-span-1" eyebrow="Green corridor savings" title="What the greener routing would save, per live shipment" action={<Pill tone="emerald">−{formatKg(saved)} CO₂e possible</Pill>}>
-      <ul className="space-y-4">
-        {alts.map((x) => {
-          const pct = (1 - x.green / x.current) * 100;
-          const max = x.current;
+    <Card
+      className="col-span-2 max-xl:col-span-1"
+      eyebrow={`Mode-shift carbon simulator · ${id}`}
+      title="Switch a leg to a greener mode and watch the footprint move"
+      action={
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => set(Object.fromEntries(legs.map((l) => [l.i, true])))} className="h-8 rounded-lg px-2.5 text-[11.5px] font-semibold text-emerald hover:bg-emerald/[0.08]">
+            Apply all
+          </button>
+          <button onClick={() => set({})} className="h-8 rounded-lg px-2.5 text-[11.5px] font-semibold text-muted hover:bg-slate-900/[0.05] hover:text-ink">
+            Reset
+          </button>
+        </div>
+      }
+    >
+      <div className="grid grid-cols-3 gap-3 max-sm:grid-cols-1">
+        <div className="rounded-2xl bg-slate-900/[0.03] p-3">
+          <div className="text-[10px] font-semibold tracking-[0.1em] text-subtle uppercase">As routed</div>
+          <div className="num mt-1 text-[20px] font-semibold text-ink">
+            <CountUp value={base} format={(n) => formatKg(n)} />
+          </div>
+        </div>
+        <div className="rounded-2xl p-3" style={{ background: saved > 1 ? 'rgba(5,150,105,0.07)' : 'rgba(15,23,42,0.03)' }}>
+          <div className="text-[10px] font-semibold tracking-[0.1em] text-subtle uppercase">Simulated</div>
+          <div className="num mt-1 text-[20px] font-semibold" style={{ color: saved > 1 ? TONE_HEX.emerald : '#0F172A' }}>
+            <CountUp value={sim} format={(n) => formatKg(n)} duration={0.6} />
+          </div>
+        </div>
+        <div className="rounded-2xl p-3" style={{ background: saved > 1 ? 'rgba(5,150,105,0.07)' : 'rgba(15,23,42,0.03)' }}>
+          <div className="text-[10px] font-semibold tracking-[0.1em] text-subtle uppercase">Saved</div>
+          <div className="num mt-1 text-[20px] font-semibold text-emerald">
+            <CountUp value={pct} format={(n) => `${n.toFixed(1)}%`} duration={0.6} />
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 space-y-1">
+        <BarRow label="Routed" value={base} max={base} color={intensityHex(schedule.legs.some((l) => l.mode === 'air') ? 'air' : 'road')} />
+        <BarRow label="Simulated" value={sim} max={base} color={TONE_HEX.emerald} />
+      </div>
+
+      <ul className="mt-4 divide-y divide-[rgba(15,23,42,0.06)]">
+        {legs.map(({ leg, i, current, green, applied }) => {
+          const Icon = MODE_ICON[leg.mode];
+          const To = SHIFT[leg.mode].icon;
           return (
-            <li key={x.id}>
-              <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
-                <div className="min-w-0">
-                  <span className="num mr-2 text-[11px] font-semibold text-muted">{x.id}</span>
-                  <span className="text-[12.5px] font-semibold text-ink">{x.title}</span>
-                </div>
-                <span className="flex items-center gap-2 text-[11px]">
-                  <span className="num font-semibold text-emerald">−{pct.toFixed(0)}%</span>
-                  <span className="num text-muted">
-                    {x.cost} · {x.time}
+            <li key={`${leg.id}-${i}`} className="flex items-center gap-3 py-2.5">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg" style={{ color: intensityHex(leg.mode), background: `color-mix(in oklab, ${intensityHex(leg.mode)} 10%, white)` }}>
+                <Icon size={15} />
+              </span>
+              <div className="min-w-0 flex-1 leading-tight">
+                <div className="truncate text-[12px] font-semibold text-ink">{ROUTES[leg.routeId].label}</div>
+                <div className="flex items-center gap-1 text-[10.5px] text-muted">
+                  <span>{MODE_LABEL[leg.mode]}</span>
+                  <ArrowRight size={10} />
+                  <To size={11} className="text-emerald" />
+                  <span className="truncate text-emerald">{SHIFT[leg.mode].to}</span>
+                  <span className="num text-subtle">
+                    · {SHIFT[leg.mode].cost} · {SHIFT[leg.mode].time}
                   </span>
-                </span>
+                </div>
               </div>
-              <div className="space-y-1">
-                <BarRow label="Current" value={x.current} max={max} color="#94A3B8" />
-                <BarRow label="Green" value={x.green} max={max} color={TONE_HEX.emerald} />
+              <div className="num w-[104px] shrink-0 text-right text-[11.5px]">
+                <span className={applied ? 'text-subtle line-through' : 'font-semibold text-ink'}>{formatKg(current)}</span>
+                {applied && <span className="ml-1.5 font-semibold text-emerald">{formatKg(green)}</span>}
               </div>
+              <button
+                role="switch"
+                aria-checked={applied}
+                aria-label={`Shift ${ROUTES[leg.routeId].label} to ${SHIFT[leg.mode].to}`}
+                onClick={() => set({ ...on, [i]: !applied })}
+                className="relative h-[20px] w-9 shrink-0 rounded-full transition-colors"
+                style={{ background: applied ? TONE_HEX.emerald : '#CBD5E1' }}
+              >
+                <motion.span className="absolute top-[2px] h-4 w-4 rounded-full bg-white shadow" animate={{ left: applied ? 18 : 2 }} transition={{ type: 'spring', stiffness: 500, damping: 32 }} />
+              </button>
             </li>
           );
         })}
@@ -241,9 +304,12 @@ function BarRow({ label, value, max, color }: { label: string; value: number; ma
 
 /* --- CBAM ------------------------------------------------------------------------------------ */
 
-function useCbamStatement() {
+function useCbamStatement(shifts: Record<number, boolean>) {
   const schedule = useScheduleFor(FLAGSHIP);
   return useMemo(() => {
+    const legs = shiftedLegs(schedule, shifts);
+    const baseline = legs.reduce((a, l) => a + l.current, 0);
+    const green = legs.reduce((a, l) => a + l.kg, 0);
     const net = 11.62;
     const direct = 1.42;
     const indirect = 0.61;
@@ -260,18 +326,19 @@ function useCbamStatement() {
         totalT: +(net * (direct + indirect)).toFixed(2),
         method: 'Actual values, verified · precursor: hot-rolled steel bar (CN 7214)',
       },
-      transportScope3: { co2eT: +(schedule.co2Kg / 1000).toFixed(3), method: 'GLEC v3 well-to-wheel', note: 'Informational; transport is not part of CBAM embedded emissions' },
+      transportScope3: { co2eT: +(green / 1000).toFixed(3), baselineT: +(baseline / 1000).toFixed(3), method: 'GLEC v3 well-to-wheel', note: 'Informational; transport is not part of CBAM embedded emissions' },
+      greenCorridor: legs.filter((l) => l.applied).map((l) => ({ leg: ROUTES[l.leg.routeId].label, shift: SHIFT[l.leg.mode].to, savedKg: Math.round(l.current - l.green) })),
       carbonPricePaid: { currency: 'INR', amount: 0 },
       scopeNote: 'CN 8708 is not listed in CBAM Annex I. Statement prepared voluntarily for the buyer’s supply-chain reporting.',
     };
-  }, [schedule.co2Kg]);
+  }, [schedule, shifts]);
 }
 
-function CbamCard() {
+function CbamCard({ shifts }: { shifts: Record<number, boolean> }) {
   const [open, setOpen] = useState(false);
-  const st = useCbamStatement();
+  const st = useCbamStatement(shifts);
   return (
-    <Card eyebrow="EU CBAM" title="Embedded emissions statement · SHP-2611-0482">
+    <Card eyebrow="EU CBAM Green Certificate" title="Embedded emissions + green corridor · SHP-2611-0482">
       <button onClick={() => setOpen(true)} className="group block w-full text-left" aria-label="Preview EU CBAM certificate">
         <div className="relative overflow-hidden rounded-xl bg-white p-3.5 shadow-[0_1px_2px_rgb(15_23_42/0.06),0_10px_24px_-14px_rgb(15_23_42/0.25),inset_0_0_0_1px_rgb(15_23_42/0.06)] transition-transform group-hover:-translate-y-0.5">
           <div className="h-1 rounded-full bg-gradient-to-r from-[#003399] to-cobalt" />
@@ -285,6 +352,7 @@ function CbamCard() {
             <Row k="Net mass" v={`${st.goods.netMassT} t`} />
             <Row k="Embedded" v={`${st.embedded.totalT} tCO₂e`} />
             <Row k="Transport (Scope 3)" v={`${st.transportScope3.co2eT} tCO₂e`} />
+            <Row k="Green measures" v={st.greenCorridor.length ? `${st.greenCorridor.length} applied` : 'none yet'} />
           </dl>
           <div className="absolute -right-6 -bottom-6 h-20 w-20 rounded-full bg-cobalt/[0.06]" />
         </div>
@@ -293,12 +361,12 @@ function CbamCard() {
         onClick={() => setOpen(true)}
         className="mt-3 flex h-10 w-full items-center justify-center gap-1.5 rounded-xl bg-ink text-[12.5px] font-semibold text-white shadow-[0_10px_22px_-12px_rgb(15_23_42/0.8)] transition-transform active:scale-[0.98]"
       >
-        <ScrollText size={14} /> Export EU CBAM Certificate
+        <ScrollText size={14} /> Generate EU CBAM Green Certificate
       </button>
       <p className="mt-2 text-[10.5px] leading-snug text-subtle">{st.scopeNote}</p>
       {/* Portalled: the page sits in a transformed transition wrapper, which would
           otherwise become the containing block for this fixed-position dialog. */}
-      {createPortal(<AnimatePresence>{open && <CbamModal onClose={() => setOpen(false)} />}</AnimatePresence>, document.body)}
+      {createPortal(<AnimatePresence>{open && <CbamModal shifts={shifts} onClose={() => setOpen(false)} />}</AnimatePresence>, document.body)}
     </Card>
   );
 }
@@ -312,8 +380,8 @@ function Row({ k, v }: { k: string; v: string }) {
   );
 }
 
-function CbamModal({ onClose }: { onClose: () => void }) {
-  const st = useCbamStatement();
+function CbamModal({ shifts, onClose }: { shifts: Record<number, boolean>; onClose: () => void }) {
+  const st = useCbamStatement(shifts);
   const [digest, setDigest] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const json = JSON.stringify(st, null, 2);
@@ -343,7 +411,7 @@ function CbamModal({ onClose }: { onClose: () => void }) {
       <motion.div
         role="dialog"
         aria-modal="true"
-        aria-label="EU CBAM certificate preview"
+        aria-label="EU CBAM Green Certificate preview"
         initial={{ y: 24, scale: 0.97, opacity: 0 }}
         animate={{ y: 0, scale: 1, opacity: 1 }}
         exit={{ y: 12, opacity: 0 }}
@@ -353,7 +421,7 @@ function CbamModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center gap-3 border-b border-[rgba(15,23,42,0.06)] px-5 py-3.5">
           <FileBadge2 size={18} className="text-[#003399]" />
           <div className="flex-1 leading-tight">
-            <div className="text-[14px] font-semibold text-ink">EU CBAM certificate preview</div>
+            <div className="text-[14px] font-semibold text-ink">EU CBAM Green Certificate preview</div>
             <div className="text-[11px] text-muted">{st.template}</div>
           </div>
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-lg text-muted hover:bg-slate-900/5 hover:text-ink" aria-label="Close">
@@ -366,7 +434,7 @@ function CbamModal({ onClose }: { onClose: () => void }) {
             <div className="mt-4 flex items-start justify-between gap-4">
               <div>
                 <div className="text-[10px] font-bold tracking-[0.18em] text-[#003399] uppercase">Carbon Border Adjustment Mechanism</div>
-                <div className="mt-1 text-[18px] font-semibold tracking-tight text-ink">Embedded Emissions Statement</div>
+                <div className="mt-1 text-[18px] font-semibold tracking-tight text-ink">Embedded Emissions &amp; Green Corridor Statement</div>
                 <div className="num mt-0.5 text-[12px] text-muted">
                   {st.statement} · reporting period {st.period}
                 </div>
@@ -386,7 +454,25 @@ function CbamModal({ onClose }: { onClose: () => void }) {
             </div>
             <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald/[0.06] px-3 py-2 text-[11px] text-ink shadow-[inset_0_0_0_1px_rgb(5_150_105/0.15)]">
               <Sprout size={14} className="text-emerald" />
-              Transport, Scope 3 (informational): <span className="num font-semibold">{st.transportScope3.co2eT} tCO₂e</span> · {st.transportScope3.method}
+              Transport, Scope 3 (informational): <span className="num font-semibold">{st.transportScope3.co2eT} tCO₂e</span>
+              {st.greenCorridor.length > 0 && <span className="num text-subtle line-through">{st.transportScope3.baselineT}</span>} · {st.transportScope3.method}
+            </div>
+            <div className="mt-3 rounded-xl bg-slate-900/[0.03] p-3">
+              <div className="text-[9.5px] font-semibold tracking-[0.1em] text-subtle uppercase">Green corridor measures</div>
+              {st.greenCorridor.length ? (
+                <ul className="mt-1.5 space-y-1 text-[11px]">
+                  {st.greenCorridor.map((g) => (
+                    <li key={g.leg} className="flex justify-between gap-3">
+                      <span className="text-ink">
+                        {g.leg} → <span className="font-semibold text-emerald">{g.shift}</span>
+                      </span>
+                      <span className="num font-semibold text-emerald">−{formatKg(g.savedKg)}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <div className="mt-1 text-[11px] text-muted">None applied. Toggle legs in the mode-shift simulator to add them to the certificate.</div>
+              )}
             </div>
             <p className="mt-3 text-[10.5px] leading-snug text-muted">
               {st.embedded.method}. {st.scopeNote}
@@ -477,13 +563,13 @@ function Topology() {
             const p = NODE_POS[c.id];
             return (
               <g key={c.id}>
-                <line x1={p.x} y1={p.y} x2={HUB.x} y2={HUB.y} stroke="rgba(37,99,235,0.22)" strokeWidth={1.5} strokeDasharray="4 5">
+                <line x1={p.x} y1={p.y} x2={HUB.x} y2={HUB.y} stroke="rgba(5,150,105,0.28)" strokeWidth={1.5} strokeDasharray="4 5">
                   <animate attributeName="stroke-dashoffset" from="0" to="-18" dur="1.4s" repeatCount="indefinite" />
                 </line>
                 {/* Heartbeat: a small packet every few seconds. */}
                 <motion.circle
                   r={2.6}
-                  fill={TONE_HEX.cobalt}
+                  fill={TONE_HEX.emerald}
                   initial={{ cx: p.x, cy: p.y, opacity: 0 }}
                   animate={{ cx: [p.x, HUB.x], cy: [p.y, HUB.y], opacity: [0, 0.8, 0] }}
                   transition={{ duration: 1.6, repeat: Infinity, repeatDelay: 2.4 + i * 0.7, delay: i * 0.5, ease: 'easeInOut' }}
@@ -554,9 +640,21 @@ function Topology() {
 
 function EventStream() {
   const log = useShipment((s) => s.ulipLog);
+  const pushUlip = useShipment((s) => s.pushUlip);
   const [paused, setPaused] = useState<UlipEvent[] | null>(null);
   const [only, setOnly] = useState<UlipId | 'all'>('all');
+  const [fired, setFired] = useState<{ n: number; label: string } | null>(null);
+  const turn = useRef(0);
   const events = (paused ?? log).filter((e) => only === 'all' || e.connector === only).slice(0, 8);
+
+  /** Deliver a real event through the store: the topology pulses and the stream appends it. */
+  const fire = () => {
+    const i = turn.current++;
+    const c = only === 'all' ? ULIP[i % ULIP.length] : ULIP_BY_ID[only];
+    pushUlip(c.id, c.messages[i % c.messages.length]);
+    setPaused(null);
+    setFired({ n: i, label: `${c.id === 'portgate' ? 'JNPT Gate' : c.name} · 200 OK` });
+  };
 
   return (
     <Card
@@ -565,16 +663,39 @@ function EventStream() {
       eyebrow="Webhook event stream"
       title="POST /v1/webhooks/ulip"
       action={
-        <button
-          onClick={() => setPaused(paused ? null : log)}
-          className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900/[0.05] px-2.5 text-[11.5px] font-semibold text-ink transition-colors hover:bg-slate-900/[0.08]"
-          aria-pressed={!!paused}
-        >
-          {paused ? <Play size={12} /> : <Pause size={12} />} {paused ? 'Resume' : 'Pause'}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={fire}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald px-2.5 text-[11.5px] font-semibold text-white shadow-[0_6px_14px_-8px_rgb(5_150_105/0.9)] transition-all hover:brightness-110 active:scale-[0.97]"
+          >
+            <Zap size={12} /> Fire Live ULIP Webhook
+          </button>
+          <button
+            onClick={() => setPaused(paused ? null : log)}
+            className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-slate-900/[0.05] px-2.5 text-[11.5px] font-semibold text-ink transition-colors hover:bg-slate-900/[0.08]"
+            aria-pressed={!!paused}
+            aria-label={paused ? 'Resume stream' : 'Pause stream'}
+          >
+            {paused ? <Play size={12} /> : <Pause size={12} />}
+          </button>
+        </div>
       }
     >
-      <div className="flex flex-wrap gap-1 px-5 pb-3">
+      <div className="flex flex-wrap items-center gap-1 px-5 pb-3">
+        <AnimatePresence>
+          {fired && (
+            <motion.span
+              key={fired.n}
+              initial={{ opacity: 0, x: -4 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              onAnimationComplete={() => setTimeout(() => setFired((f) => (f?.n === fired.n ? null : f)), 1800)}
+              className="num mr-1 rounded-full bg-emerald/10 px-2 py-0.5 text-[10.5px] font-semibold text-emerald"
+            >
+              ✓ {fired.label}
+            </motion.span>
+          )}
+        </AnimatePresence>
         {(['all', ...ULIP.map((c) => c.id)] as (UlipId | 'all')[]).map((k) => (
           <button
             key={k}

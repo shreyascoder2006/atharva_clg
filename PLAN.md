@@ -86,17 +86,60 @@ A light-themed command centre that connects the Exporter, Freight Forwarder, Cus
 - **Dashboards.** Six lazily loaded pages on a shared kit: Shipments & Fleet Command, the Document Vault & AI X-Ray Studio (the X-Ray modal generalised to any shipment), the Partner Marketplace, the Comms & Escalation Hub, Financials (Demurrage & Escrow), and Sustainability & ULIP.
 - **State.** New store slices for navigation, corridor focus, partner assignments and comms. Workflow actions now also post to comms. `partyOf` and `payeeOf` resolve reassigned forwarders for every view.
 
+### Phase 9: Flagship polish and interactive dashboards
+
+Phase 0 inspection for this brief: most of it is already shipped (phases 1–8). The 7 corridors, vehicles, dioramas, sonar, pillars, the HUD, twin, phone, rail, globe persistence and six dashboards exist. This phase covers only the gaps.
+
+- **9a · Aesthetic tokens** (`index.css`, `dash/kit.tsx`, `shell/Sidebar.tsx`, `App.tsx`, `globe/LandDots.tsx`, `globe/CorridorArcs.tsx`)
+  - Backdrop `#FAFCFF` → `#E6EFFA`.
+  - Glass: `bg-white/80`, blur-xl, hairline border, specular inset edge + `0 12px 32px` shadow, on every panel.
+  - Cobalt sliding nav pill; pulsing badges.
+  - 6px fast page transitions.
+  - Ocean roughness 0.3, land 0.92; ambient corridors at 0.28 opacity.
+  - Amber for carbon-heavy legs.
+  - A `CountUp` component for KPIs, ETAs and currency.
+- **9b · Globe hero aura** (`globe/GlobeShadow.tsx`, `globe/ShipmentMarkers.tsx`, `overlay/GlobeOverlay.tsx`)
+  - A diffused contact shadow under the globe, tracked in screen space.
+  - A rotating radar ring on the surface beneath the selected vehicle.
+  - A hairline tether from the telemetry pin.
+- **9c · Shipments** (`pages/ShipmentsPage.tsx`, `dash/usePortfolio.ts`, `data/lanes.ts`, `lib/route.ts`, `globe/CorridorArcs.tsx`)
+  - Filters: All / Active / At Risk / Cleared.
+  - An expandable milestone mini-stepper per row.
+  - A **+ New Shipment** modal that registers a runtime route and draws it on the globe.
+- **9d · Documents** (`xray/DocXrayModal.tsx`, `pages/DocumentsPage.tsx`)
+  - Hovering a field highlights its twins and connectors.
+  - A **Run AI Verification Scan** beam.
+  - A copy-hash toast.
+- **9e · Partners** (`pages/PartnersPage.tsx`)
+  - Priority sliders and presets (Lowest Cost / Fastest Transit / Greenest CO₂e) that re-score and re-rank the bids live.
+- **9f · Comms** (`pages/CommsPage.tsx`, `store/shipment.ts`)
+  - Clickable chips that route to the right workspace.
+  - Composer quick-inserts: + Attach e-BL, + Ping Driver, + Escalate to CHA.
+  - A 1.2s typing indicator and replies from the relevant role.
+- **9g · Financials** (`pages/FinancialsPage.tsx`, `store/shipment.ts`)
+  - **Simulate Milestone Proof** on the escrow pipeline, driving the real workflow actions.
+  - A demurrage what-if slider (+0–72h) with an SVG cost curve.
+  - A hoverable cost breakdown.
+  - A **Preview Invoice** modal.
+- **9h · Sustainability & ULIP** (`pages/IntegrationsPage.tsx`)
+  - A per-leg mode-shift carbon simulator.
+  - The **Generate EU CBAM Green Certificate** modal.
+  - Emerald packets on the topology map.
+  - A **Fire Live ULIP Webhook** button.
+- **9i · Verification:** typecheck, lint, unit tests, build, the dashboard and Control Tower smoke tests, zero console warnings.
+
 ## Status
 
-All eight phases are complete.
+All nine phases are complete.
 
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | clean |
 | `npm run lint` | 0 errors, 0 warnings |
-| `npm test` | 32/32 passing (schedule engine, fleet schedules, ISO 6346, SHA-256, routes, marketplace badges, party reassignment, comms unread state, data integrity) |
+| `npm test` | 41/41 passing (schedule engine, fleet schedules, ISO 6346, SHA-256, routes, marketplace badges and priority presets, party reassignment, comms unread state and quick-insert replies, lane routes, new bookings, escrow proofs and their document gate) |
 | `npm run build` | passes; vendors split into `three`, `r3f`, `motion` and `vendor`; twin, coastline vectors and each dashboard lazy-loaded |
 | Dashboard OS smoke (Playwright, 28 checks: every route, back button, globe pause/resume, nothing covering the globe canvas, document resolve, partner assignment, comms posting as a role, disruption reaching Financials and Comms, Track on 3D Globe for live and watch-list shipments, rail toggle, keyboard navigation, mobile) | all pass · 0 console errors, 0 warnings |
+| Phase 9 interaction checks (Playwright, 22): filters, milestone stepper, New Shipment → globe corridor → track, hover-linked fields, AI scan, priority presets, comms attach / ping driver / escalate to CHA / chip links, the four escrow proofs, what-if slider, invoice preview, mode shifts → CBAM Green Certificate, Fire Live ULIP Webhook | all pass · 0 console errors, 0 warnings |
 | Control Tower smoke (Playwright, 42 UI steps across every role, lens, disruption, recovery, X-Ray, phone, twin, multi-route selection and zoom) | all 42 steps pass · 0 console errors, 0 warnings · route click selects 0519, wheel zoom reaches r = 1.0032 |
 
 The verification surfaced and fixed these deviations from the plan:
@@ -106,3 +149,4 @@ The verification surfaced and fixed these deviations from the plan:
 - Phase 7: sampling all six high-resolution land patches on every pixel halved the software-rendered frame rate. Patches are now switched by a uniform weight (altitude and facing), and anisotropy is capped at 8x.
 - Phase 8: a fixed-position dialog inside the page transition wrapper (which is transformed) was positioned against the wrapper, not the viewport; the CBAM dialog is portalled to `document.body`.
 - Phase 8: the empty dashboard container sat over the globe on the Control Tower and swallowed its drag, zoom and route clicks (HUD buttons, layered above it, still worked). The Control Tower smoke caught it. The container is now click-through, and the dashboard smoke asserts the canvas is on top.
+- Phase 9: the first priority presets were too gentle. "Lowest Cost" and "Greenest CO₂e" each ranked Maersk first on near-ties, because the secondary weights outvoted the named criterion. A unit test caught it, and the presets now lead decisively. For each shipment, the test checks that the winner is the best on the preset's own criterion.

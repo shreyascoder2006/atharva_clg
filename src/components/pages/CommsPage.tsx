@@ -27,6 +27,7 @@ import { FLAGSHIP, ROLE_ORDER, ROLES, type Role, type ShipmentId, type UlipId } 
 import { formatDay, formatStamp, formatTime } from '@/lib/format';
 import { TONE_HEX, type Tone } from '@/lib/palette';
 import { milestoneStatuses } from '@/lib/schedule';
+import type { ViewId } from '@/lib/routes';
 import { partyOf, ULIP_BY_ID, unreadCount, useScheduleFor, useShipment } from '@/store/shipment';
 
 export default function CommsPage() {
@@ -41,8 +42,7 @@ export default function CommsPage() {
   );
 }
 
-const panel =
-  'min-h-0 rounded-[20px] border border-[rgba(15,23,42,0.08)] bg-white/85 shadow-[0_1px_2px_rgb(15_23_42/0.04),0_10px_30px_-12px_rgb(15_23_42/0.10)] backdrop-blur-xl';
+const panel = 'glass min-h-0 rounded-[20px]';
 
 /* --- Channels --------------------------------------------------------------------------- */
 
@@ -142,23 +142,51 @@ const CHIP_ICON: Record<ChipKind, LucideIcon> = {
   hash: Fingerprint,
 };
 
-function MessageChip({ chip }: { chip: MsgChip }) {
+/** Where a chip leads: documents and hashes to the vault, money to Financials, the rest to the globe. */
+function chipTarget(chip: MsgChip): { view: ViewId; label: string } {
+  if (chip.kind === 'doc' || chip.kind === 'hash') return { view: 'documents', label: 'Open in the Document Vault' };
+  if (chip.kind === 'escrow') return { view: 'financials', label: 'Open the escrow pipeline' };
+  if (chip.kind === 'alert' && /mismatch|rms|examination|hold/i.test(chip.label)) return { view: 'documents', label: 'Open the documents behind this alert' };
+  return { view: 'tower', label: 'Show on the Control Tower' };
+}
+
+function MessageChip({ chip, shipment, removable, onRemove }: { chip: MsgChip; shipment?: ShipmentId | null; removable?: boolean; onRemove?: () => void }) {
   const Icon = CHIP_ICON[chip.kind];
   const hex = TONE_HEX[chip.tone];
+  const setView = useShipment((s) => s.setView);
+  const select = useShipment((s) => s.selectShipment);
+  const target = chipTarget(chip);
+  const style = { color: hex, background: `color-mix(in oklab, ${hex} 8%, white)`, boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${hex} 22%, transparent)` };
+  const cls = `inline-flex h-[22px] items-center gap-1 rounded-lg px-2 text-[10.5px] font-semibold ${chip.kind === 'hash' || chip.kind === 'doc' ? 'num' : ''}`;
+  if (removable)
+    return (
+      <span className={cls} style={style}>
+        <Icon size={11} />
+        {chip.label}
+        <button onClick={onRemove} className="ml-0.5 opacity-60 hover:opacity-100" aria-label={`Remove ${chip.label}`}>
+          ×
+        </button>
+      </span>
+    );
   return (
-    <span
-      className={`inline-flex h-[22px] items-center gap-1 rounded-lg px-2 text-[10.5px] font-semibold ${chip.kind === 'hash' || chip.kind === 'doc' ? 'num' : ''}`}
-      style={{ color: hex, background: `color-mix(in oklab, ${hex} 8%, white)`, boxShadow: `inset 0 0 0 1px color-mix(in oklab, ${hex} 22%, transparent)` }}
+    <button
+      onClick={() => {
+        if (shipment) select(shipment);
+        setView(target.view);
+      }}
+      title={target.label}
+      className={`${cls} transition-transform hover:-translate-y-px hover:brightness-95 active:translate-y-0`}
+      style={style}
     >
       <Icon size={11} />
       {chip.label}
-    </span>
+    </button>
   );
 }
 
 /* --- Thread ----------------------------------------------------------------------------- */
 
-const QUICK = ["What's the ETA?", 'Are the documents reconciled?', 'Any customs hold?'];
+const QUICK = ["What's the ETA?", 'Are the documents reconciled?'];
 
 function Thread() {
   const channel = useShipment((s) => s.channel);
@@ -297,7 +325,7 @@ function Message({ m, grouped }: { m: ChatMessage; grouped: boolean }) {
         {m.chips && m.chips.length > 0 && (
           <div className="mt-1.5 flex flex-wrap gap-1.5">
             {m.chips.map((c, i) => (
-              <MessageChip key={i} chip={c} />
+              <MessageChip key={i} chip={c} shipment={m.shipment} />
             ))}
           </div>
         )}
@@ -310,20 +338,51 @@ function Composer({ quick }: { quick: string[] }) {
   const role = useShipment((s) => s.role);
   const channel = useShipment((s) => s.channel);
   const post = useShipment((s) => s.postMessage);
+  const shipment = useShipment((s) => CHANNEL_BY_ID[s.channel].shipment ?? s.selected);
   const person = useShipment((s) => partyOf(s.assignments, CHANNEL_BY_ID[s.channel].shipment ?? s.selected, s.role).person);
+  const driver = useShipment((s) => partyOf(s.assignments, CHANNEL_BY_ID[s.channel].shipment ?? s.selected, 'transporter').person);
   const [text, setText] = useState('');
+  const [attached, setAttached] = useState<MsgChip[]>([]);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   const send = (t = text) => {
-    if (!t.trim()) return;
-    post(t);
+    if (!t.trim() && !attached.length) return;
+    post(t.trim() || 'Attaching for reference.', { chips: attached.length ? attached : undefined });
     setText('');
+    setAttached([]);
     ref.current?.focus();
   };
+
+  // The channel's title document: the e-BL for ocean, the house air waybill for air.
+  const titleDoc = FLEET[shipment].documents.find((d) => d.id === 'ebl' || d.id === 'awb');
+  const attach = () => {
+    if (!titleDoc) return;
+    const chip: MsgChip = { kind: 'doc', label: `${titleDoc.name} · ${titleDoc.ref}`, tone: 'cobalt' };
+    setAttached((a) => (a.some((x) => x.label === chip.label) ? a : [...a, chip]));
+    ref.current?.focus();
+  };
+  const pingDriver = () => post(`@${driver} can you share your position and ETA to the gate?`, { intent: 'ping-driver' });
+  const escalateCha = () =>
+    post(`Escalating to the CHA: please prioritise customs on ${shipment}.`, {
+      intent: 'escalate-cha',
+      chips: [{ kind: 'alert', label: 'Escalated to CHA · SLA 2h', tone: 'amber' }],
+    });
+  const insertCls =
+    'h-7 rounded-full bg-cobalt/[0.07] px-2.5 text-[11px] font-semibold text-cobalt shadow-[inset_0_0_0_1px_rgb(37_99_235/0.15)] transition-colors hover:bg-cobalt/[0.12]';
 
   return (
     <div className="border-t border-[rgba(15,23,42,0.06)] px-4 pt-2.5 pb-3">
       <div className="mb-2 flex flex-wrap gap-1.5">
+        <button onClick={attach} className={insertCls}>
+          + Attach {titleDoc?.id === 'awb' ? 'HAWB' : 'e-BL'}
+        </button>
+        <button onClick={pingDriver} className={insertCls}>
+          + Ping Driver
+        </button>
+        <button onClick={escalateCha} className={insertCls}>
+          + Escalate to CHA
+        </button>
+        <span className="mx-0.5 h-7 w-px bg-[rgba(15,23,42,0.08)]" />
         {quick.map((q) => (
           <button
             key={q}
@@ -334,6 +393,13 @@ function Composer({ quick }: { quick: string[] }) {
           </button>
         ))}
       </div>
+      {attached.length > 0 && (
+        <div className="mb-1.5 flex flex-wrap gap-1.5">
+          {attached.map((c) => (
+            <MessageChip key={c.label} chip={c} removable onRemove={() => setAttached((a) => a.filter((x) => x.label !== c.label))} />
+          ))}
+        </div>
+      )}
       <div className="flex items-end gap-2 rounded-2xl bg-white p-2 shadow-[inset_0_0_0_1px_rgb(15_23_42/0.1)] focus-within:shadow-[inset_0_0_0_1.5px_rgb(37_99_235/0.55),0_0_0_4px_rgb(37_99_235/0.08)]">
         <span className="mb-0.5 flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900/[0.04] py-1 pr-2 pl-1" title={`Posting as ${ROLES[role].label}`}>
           <RoleAvatar role={role} shipment={CHANNEL_BY_ID[channel].shipment ?? undefined} size={20} />
@@ -356,7 +422,7 @@ function Composer({ quick }: { quick: string[] }) {
         />
         <button
           onClick={() => send()}
-          disabled={!text.trim()}
+          disabled={!text.trim() && !attached.length}
           className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-cobalt text-white shadow-[0_6px_14px_-6px_rgb(37_99_235/0.8)] transition-all hover:brightness-110 active:scale-95 disabled:bg-slate-200 disabled:shadow-none"
           aria-label="Send message"
         >

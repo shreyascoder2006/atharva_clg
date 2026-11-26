@@ -76,7 +76,7 @@ export function Sidebar() {
       </AnimatePresence>
       <motion.nav
         aria-label="Workspaces"
-        className="absolute inset-y-0 left-0 z-50 flex flex-col border-r border-[rgba(15,23,42,0.08)] bg-white/85 py-3 shadow-[1px_0_0_rgb(255_255_255/0.6),8px_0_32px_-12px_rgb(15_23_42/0.12)] backdrop-blur-xl"
+        className="absolute inset-y-0 left-0 z-50 flex flex-col border-r border-[rgba(15,23,42,0.08)] bg-white/80 py-3 shadow-[inset_-1px_0_0_rgba(255,255,255,0.9),12px_0_32px_rgba(15,23,42,0.06)] backdrop-blur-xl"
         initial={false}
         animate={{ width }}
         transition={{ type: 'spring', stiffness: 380, damping: 38 }}
@@ -184,13 +184,13 @@ function NavItem({
       aria-current={active ? 'page' : undefined}
       aria-label={badge ? `${label} · ${badge.label}` : label}
       className="group relative flex h-10 w-full items-center gap-3 rounded-xl px-3 text-left text-[12.5px] font-medium transition-colors"
-      style={{ color: active ? '#0F172A' : '#475569' }}
+      style={{ color: active ? '#1E3A8A' : '#475569' }}
     >
       {active && (
         <>
           <motion.span
             layoutId="nav-pill"
-            className="absolute inset-0 rounded-xl bg-white shadow-[0_1px_2px_rgb(15_23_42/0.06),0_8px_20px_-10px_rgb(37_99_235/0.45),inset_0_0_0_1px_rgb(15_23_42/0.07)]"
+            className="absolute inset-0 rounded-xl bg-gradient-to-r from-cobalt/[0.12] to-cobalt/[0.05] shadow-[inset_0_0_0_1px_rgba(37,99,235,0.22),inset_0_1px_0_rgba(255,255,255,0.9),0_8px_20px_-12px_rgba(37,99,235,0.55)]"
             transition={{ type: 'spring', stiffness: 460, damping: 36 }}
           />
           <motion.span
@@ -228,8 +228,11 @@ function NavItem({
 function IconBadge({ badge }: { badge: Badge }) {
   if (badge.kind === 'count')
     return (
-      <span className="num absolute -top-2 -right-2.5 grid h-[16px] min-w-[16px] place-items-center rounded-full bg-crimson px-1 text-[9.5px] font-bold text-white shadow-[0_0_0_2px_white]">
-        {badge.n > 9 ? '9+' : badge.n}
+      <span className="absolute -top-2 -right-2.5 grid">
+        <span className="absolute inset-0 animate-ping rounded-full bg-crimson opacity-40" />
+        <span className="num relative grid h-[16px] min-w-[16px] place-items-center rounded-full bg-crimson px-1 text-[9.5px] font-bold text-white shadow-[0_0_0_2px_white]">
+          {badge.n > 9 ? '9+' : badge.n}
+        </span>
       </span>
     );
   return (
@@ -241,7 +244,12 @@ function IconBadge({ badge }: { badge: Badge }) {
 
 function RowBadge({ badge }: { badge: Badge }) {
   if (badge.kind === 'count')
-    return <span className="num grid h-[18px] min-w-[18px] place-items-center rounded-full bg-crimson px-1.5 text-[10px] font-bold text-white">{badge.n}</span>;
+    return (
+      <span className="relative grid">
+        <span className="absolute inset-0 animate-ping rounded-full bg-crimson opacity-30" />
+        <span className="num relative grid h-[18px] min-w-[18px] place-items-center rounded-full bg-crimson px-1.5 text-[10px] font-bold text-white">{badge.n}</span>
+      </span>
+    );
   return (
     <span className="flex items-center gap-1 text-[10px] font-semibold" style={{ color: TONE_HEX[badge.tone] }}>
       <Dot tone={badge.tone} pulse={badge.pulse} size={6} />

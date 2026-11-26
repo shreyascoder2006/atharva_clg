@@ -8,6 +8,7 @@ import { CameraRig } from './CameraRig';
 import { CongestionPillars } from './CongestionPillars';
 import { CorridorArcs } from './CorridorArcs';
 import { FrameDriver } from './frame';
+import { GlobeShadowDriver } from './GlobeShadow';
 import { GlobeCore, Graticule, LandDots } from './LandDots';
 import { PlaceLabels } from './PlaceLabels';
 import { PortDioramas } from './PortDioramas';
@@ -48,6 +49,7 @@ export function GlobeScene({ active = true }: { active?: boolean }) {
     >
       <ResumeClock running={running} />
       <FrameDriver />
+      <GlobeShadowDriver />
       <StudioLights />
       <ViewOffset />
 

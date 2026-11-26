@@ -1,13 +1,19 @@
 import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
-import { ArrowRight, BadgeCheck, Coins, FileCheck2, Landmark, Lock, Receipt, Scale, ShieldCheck, ShieldX, Ship, Truck } from 'lucide-react';
+import { ArrowRight, BadgeCheck, Coins, Eye, FileCheck2, Landmark, Loader2, Lock, Receipt, Scale, ShieldCheck, ShieldX, Ship, Truck, Zap } from 'lucide-react';
 
 import { Card, DashPage, Pill, RadialGauge, RoleBadge, Segmented, ShipmentPicker, StatCard } from '@/components/dash/kit';
+import { DemurrageWhatIf } from '@/components/dash/DemurrageWhatIf';
+import { InvoicePreview } from '@/components/dash/InvoicePreview';
+import { STATUS_TONE, type LedgerRow, type LedgerStatus } from '@/components/dash/ledger';
 import { usePortfolio } from '@/components/dash/usePortfolio';
+import { CountUp } from '@/components/hud/ui';
 import { BOOKED_DEMURRAGE, COSTS, DEMURRAGE_BUDGET, INR_PER_USD, LIVE_IDS, MUNDRA_HOLD_RATE, STATIC_INVOICES, moneyToUsd, type CostCategory } from '@/data/finance';
 import { FLEET } from '@/data/fleet';
 import { QUOTES } from '@/data/partners';
-import { DISRUPTIONS, ROLES, type Role, type ShipmentId } from '@/data/shipment';
+import { WATCH_BY_ID } from '@/data/portfolio';
+import { XRAY_SETS } from '@/data/xray';
+import { DISRUPTIONS, FLAGSHIP, ROLES, type EscrowLine, type Role, type ShipmentId } from '@/data/shipment';
 import { SURAT } from '@/lib/fleet';
 import { formatStamp, formatUsd } from '@/lib/format';
 import { TONE_HEX, type Tone } from '@/lib/palette';
@@ -42,8 +48,9 @@ function exposures(s: ShipmentState): Exposure[] {
   return out;
 }
 
-function costsFor(id: string, assignments: ShipmentState['assignments']): Record<CostCategory, number> {
-  const base = COSTS[id];
+function costsFor(id: string, assignments: ShipmentState['assignments'], estimate?: Record<CostCategory, number>): Record<CostCategory, number> {
+  // New bookings have no contracted cost sheet yet; they carry an estimate.
+  const base = COSTS[id] ?? estimate!;
   const pid = (assignments as Record<string, string | undefined>)[id];
   if (!pid) return base;
   const quote = QUOTES[id as ShipmentId]?.find((q) => q.partner === pid);
@@ -66,7 +73,7 @@ export default function FinancialsPage() {
   const exposure = exp.reduce((a, e) => a + e.usd, 0);
   const accruing = exp.some((e) => e.live);
 
-  const allCosts = rows.map((r) => ({ id: r.id, c: costsFor(r.id, state.assignments) }));
+  const allCosts = rows.map((r) => ({ id: r.id, c: costsFor(r.id, state.assignments, r.costs) }));
   const spend = allCosts.reduce((a, x) => a + x.c.freight + x.c.customs + x.c.inland + x.c.port + x.c.insurance, 0);
   const kg = rows.reduce((a, r) => a + r.grossKg, 0);
 
@@ -106,7 +113,9 @@ export default function FinancialsPage() {
               stroke={8}
             />
             <div className="min-w-0">
-              <div className="num text-[24px] leading-none font-semibold tracking-[-0.03em] text-ink">{formatUsd(exposure)}</div>
+              <div className="num text-[24px] leading-none font-semibold tracking-[-0.03em] text-ink">
+                <CountUp value={exposure} format={(n) => formatUsd(n)} duration={0.7} />
+              </div>
               <div className="mt-1 text-[11px] text-muted">of {formatUsd(DEMURRAGE_BUDGET)} monthly budget</div>
             </div>
           </div>
@@ -127,7 +136,7 @@ export default function FinancialsPage() {
         <StatCard
           label="Total Freight Spend"
           icon={<Receipt size={15} />}
-          value={formatUsd(spend)}
+          value={<CountUp value={spend} format={(n) => formatUsd(n)} />}
           sub={`${rows.length} shipments · freight, customs, inland, port, insurance`}
           spark={[19.8, 21.0, 20.4, 22.1, 21.6, 22.8, 23.5, spend / 1000]}
         />
@@ -139,7 +148,7 @@ export default function FinancialsPage() {
             Escrow Locked vs. Released
           </div>
           <div className="num mt-3 text-[26px] leading-none font-semibold tracking-[-0.03em] text-ink">
-            {formatUsd(released)} <span className="text-[13px] font-medium text-muted">released</span>
+            <CountUp value={released} format={(n) => formatUsd(n)} /> <span className="text-[13px] font-medium text-muted">released</span>
           </div>
           <div className="mt-3 flex h-2.5 overflow-hidden rounded-full bg-slate-900/[0.06]">
             <motion.div className="h-full bg-emerald" animate={{ width: `${(released / (released + locked || 1)) * 100}%` }} transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }} />
@@ -155,7 +164,7 @@ export default function FinancialsPage() {
           label="Cost per kg"
           icon={<Coins size={15} />}
           tone="violet"
-          value={`$${(spend / kg).toFixed(3)}`}
+          value={<CountUp value={spend / kg} format={(n) => `$${n.toFixed(3)}`} />}
           sub={`${formatUsd(spend)} over ${(kg / 1000).toFixed(1)} t gross · lane benchmark $0.390`}
           subTone={spend / kg < 0.39 ? 'emerald' : 'amber'}
           spark={[0.41, 0.4, 0.39, 0.4, 0.38, 0.37, 0.375, spend / kg]}
@@ -163,6 +172,7 @@ export default function FinancialsPage() {
       </div>
 
       <EscrowPipeline />
+      <DemurrageWhatIf />
 
       <div className="mt-4 grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.6fr)] gap-4 max-[1180px]:grid-cols-1">
         <CostBreakdown allCosts={allCosts} exposure={exposure} />
@@ -204,6 +214,8 @@ function EscrowPipeline() {
   const ms = milestoneStatuses(schedule, nowH, nowH);
   const lines = FLEET[id].escrow;
   const states = lines.map((l) => stageState(escrowStatus(ms[l.trigger]), schedule.byId[l.trigger]?.actualH, nowH));
+  // Proof can only be supplied for the next stage in line; later ones wait their turn.
+  const next = states.findIndex((s) => s !== 'released' && s !== 'verified');
   const total = lines.reduce((a, l) => a + moneyToUsd(l.amount), 0);
 
   return (
@@ -271,6 +283,11 @@ function EscrowPipeline() {
                   </AnimatePresence>
                   {at !== undefined && <span className="num text-[10px] text-subtle">{formatStamp(at).slice(4, 16)}</span>}
                 </div>
+                {st !== 'released' && st !== 'verified' && (
+                  <div className="mt-3 border-t border-dashed border-slate-900/[0.08] pt-2.5">
+                    {i === next ? <ProofButton id={id} line={l} /> : <span className="text-[10.5px] text-subtle">Waits for step {next + 1}</span>}
+                  </div>
+                )}
               </motion.div>
             </div>
           );
@@ -287,6 +304,64 @@ function EscrowPipeline() {
         <span className="ml-auto text-subtle">Rupee payouts settle via UPI; dollar payouts via SWIFT gpi. FX ₹{INR_PER_USD}/US$ (demo).</span>
       </div>
     </Card>
+  );
+}
+
+/** Why the next stage's proof cannot be supplied yet, if it cannot. */
+function useProofGate(id: ShipmentId, trigger: string): { ok: boolean; busy?: string; reason?: string; fix?: { view: 'documents' | 'tower'; label: string } } {
+  const gateIn = useShipment((s) => s.actuals.gateIn !== undefined);
+  const leo = useShipment((s) => s.actuals.leo !== undefined);
+  const loaded = useShipment((s) => s.actuals.loaded !== undefined);
+  const driving = useShipment((s) => s.driving);
+  const docs = useShipment((s) => s.docsVerified);
+  const customs = useShipment((s) => s.customs);
+  const hold = useShipment((s) => s.hold0494 === 'active');
+  if (id === 'SHP-2611-0494') return trigger === 'leo' && hold ? { ok: true } : { ok: false };
+  if (id !== FLAGSHIP) return { ok: false };
+  if (trigger === 'gateIn') return driving ? { ok: false, busy: 'Truck driving to Gate 4…' } : { ok: true };
+  if (trigger === 'leo') {
+    if (!gateIn) return { ok: false, reason: 'Needs gate-in proof first' };
+    if (!docs) return { ok: false, reason: 'Blocked by the weight mismatch', fix: { view: 'documents', label: 'Resolve in Documents' } };
+    if (customs === 'active') return { ok: false, reason: 'Blocked by the customs hold', fix: { view: 'tower', label: 'Open the Co-Pilot' } };
+    return { ok: true };
+  }
+  if (trigger === 'loaded') return leo ? { ok: true } : { ok: false, reason: 'Needs Customs LEO first' };
+  if (trigger === 'lc') return loaded ? { ok: true } : { ok: false, reason: 'Needs shipped-on-board first' };
+  return { ok: false };
+}
+
+/** Supplies the milestone's proof through the real workflow action, so every view moves with it. */
+function ProofButton({ id, line }: { id: ShipmentId; line: EscrowLine }) {
+  const prove = useShipment((s) => s.proveMilestone);
+  const setView = useShipment((s) => s.setView);
+  const gate = useProofGate(id, line.trigger);
+  if (gate.busy)
+    return (
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold text-cobalt">
+        <Loader2 size={12} className="animate-spin" /> {gate.busy}
+      </span>
+    );
+  if (!gate.ok && !gate.reason) return <span className="text-[10.5px] text-subtle">Auto-releases {line.triggerLabel}</span>;
+  if (!gate.ok)
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-1.5">
+        <span className="text-[10.5px] font-medium" style={{ color: gate.fix ? TONE_HEX.crimson : '#94A3B8' }}>
+          {gate.reason}
+        </span>
+        {gate.fix && (
+          <button onClick={() => setView(gate.fix!.view)} className="text-[10.5px] font-semibold text-cobalt hover:underline">
+            {gate.fix.label} →
+          </button>
+        )}
+      </div>
+    );
+  return (
+    <button
+      onClick={() => prove(line.trigger)}
+      className="inline-flex h-8 w-full items-center justify-center gap-1.5 rounded-lg bg-cobalt text-[11.5px] font-semibold text-white shadow-[0_6px_14px_-8px_rgb(37_99_235/0.9),inset_0_1px_0_rgb(255_255_255/0.25)] transition-all hover:brightness-110 active:scale-[0.98]"
+    >
+      <Zap size={12} /> Simulate milestone proof
+    </button>
   );
 }
 
@@ -311,6 +386,7 @@ const BUCKETS: { key: 'freight' | 'customs' | 'inland' | 'demurrage'; label: str
 ];
 
 function CostBreakdown({ allCosts, exposure }: { allCosts: { id: string; c: Record<CostCategory, number> }[]; exposure: number }) {
+  const [hover, setHover] = useState<(typeof BUCKETS)[number]['key'] | null>(null);
   const totals = {
     freight: allCosts.reduce((a, x) => a + x.c.freight + x.c.insurance, 0),
     customs: allCosts.reduce((a, x) => a + x.c.customs, 0),
@@ -327,7 +403,7 @@ function CostBreakdown({ allCosts, exposure }: { allCosts: { id: string; c: Reco
     <Card eyebrow="Cost breakdown" title="Where the logistics dollar goes">
       <div className="flex items-center gap-5 max-sm:flex-col">
         <div className="relative shrink-0">
-          <svg width={160} height={160} viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }} aria-hidden>
+          <svg width={160} height={160} viewBox="0 0 160 160" style={{ transform: 'rotate(-90deg)' }} className="overflow-visible" aria-hidden>
             <circle cx={80} cy={80} r={R} fill="none" stroke="rgba(15,23,42,0.05)" strokeWidth={18} />
             {BUCKETS.map((b) => {
               const frac = totals[b.key] / sum;
@@ -342,25 +418,38 @@ function CostBreakdown({ allCosts, exposure }: { allCosts: { id: string; c: Reco
                   r={R}
                   fill="none"
                   stroke={TONE_HEX[b.tone]}
-                  strokeWidth={18}
                   strokeDashoffset={off}
-                  initial={{ strokeDasharray: `0 ${C}` }}
-                  animate={{ strokeDasharray: `${seg} ${C - seg}` }}
-                  transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1] }}
+                  pointerEvents="stroke"
+                  className="cursor-pointer"
+                  onPointerEnter={() => setHover(b.key)}
+                  onPointerLeave={() => setHover(null)}
+                  initial={{ strokeDasharray: `0 ${C}`, strokeWidth: 18 }}
+                  animate={{ strokeDasharray: `${seg} ${C - seg}`, strokeWidth: hover === b.key ? 24 : 18, opacity: hover && hover !== b.key ? 0.3 : 1 }}
+                  transition={{ duration: 0.9, ease: [0.16, 1, 0.3, 1], strokeWidth: { duration: 0.2 }, opacity: { duration: 0.2 } }}
                 />
               );
             })}
           </svg>
           <div className="absolute inset-0 grid place-items-center text-center leading-tight">
             <div>
-              <div className="num text-[18px] font-semibold text-ink">{formatUsd(sum)}</div>
-              <div className="text-[9.5px] font-semibold tracking-[0.1em] text-subtle uppercase">landed cost</div>
+              <div className="num text-[18px] font-semibold text-ink">
+                <CountUp value={hover ? totals[hover] : sum} format={(n) => formatUsd(n)} duration={0.4} />
+              </div>
+              <div className="max-w-[96px] text-[9.5px] font-semibold tracking-[0.1em] uppercase" style={{ color: hover ? TONE_HEX[BUCKETS.find((b) => b.key === hover)!.tone] : '#94A3B8' }}>
+                {hover ? `${BUCKETS.find((b) => b.key === hover)!.label} · ${((totals[hover] / sum) * 100).toFixed(0)}%` : 'landed cost'}
+              </div>
             </div>
           </div>
         </div>
         <ul className="w-full space-y-2">
           {BUCKETS.map((b) => (
-            <li key={b.key} className="flex items-center gap-2 text-[12px]">
+            <li
+              key={b.key}
+              onPointerEnter={() => setHover(b.key)}
+              onPointerLeave={() => setHover(null)}
+              className="-mx-1.5 flex cursor-default items-center gap-2 rounded-lg px-1.5 py-0.5 text-[12px] transition-colors"
+              style={{ background: hover === b.key ? `color-mix(in oklab, ${TONE_HEX[b.tone]} 8%, transparent)` : undefined, opacity: hover && hover !== b.key ? 0.5 : 1 }}
+            >
               <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: TONE_HEX[b.tone] }} />
               <span className="flex-1 text-muted">{b.label}</span>
               <span className="num font-semibold text-ink">{formatUsd(totals[b.key])}</span>
@@ -403,21 +492,6 @@ function CostBreakdown({ allCosts, exposure }: { allCosts: { id: string; c: Reco
 
 /* --- Ledger ------------------------------------------------------------------------------- */
 
-type LedgerStatus = 'In escrow' | 'Settled' | 'On hold' | 'Pending' | 'Disputed';
-
-interface LedgerRow {
-  id: string;
-  shipment: string;
-  payee: string;
-  role: Role | null;
-  category: string;
-  usd: number;
-  original: string;
-  dueH: number;
-  status: LedgerStatus;
-}
-
-const STATUS_TONE: Record<LedgerStatus, Tone> = { 'In escrow': 'cobalt', Settled: 'emerald', 'On hold': 'crimson', Pending: 'amber', Disputed: 'crimson' };
 const CATEGORY: Record<Role, string> = { transporter: 'Inland haulage', broker: 'Customs & CHA', forwarder: 'Freight', exporter: 'LC / CAD proceeds' };
 
 function Ledger() {
@@ -428,6 +502,7 @@ function Ledger() {
   const s0494 = useScheduleFor('SHP-2611-0494');
   const [status, setStatus] = useState<'all' | LedgerStatus>('all');
   const [ship, setShip] = useState('all');
+  const [preview, setPreview] = useState<LedgerRow | null>(null);
 
   const rows = useMemo<LedgerRow[]>(() => {
     const scheds = { 'SHP-2611-0482': s0482, 'SHP-2611-0519': s0519, 'SHP-2611-0494': s0494 } as const;
@@ -445,6 +520,9 @@ function Ledger() {
           original: e.amount,
           dueH: scheds[id].byId[e.trigger]?.plannedH ?? nowH,
           status: st === 'released' ? 'Settled' : st === 'blocked' ? 'On hold' : 'In escrow',
+          // Proceeds are billed to the buyer; every partner payout to the exporter.
+          billTo: e.id === 'exporter' ? XRAY_SETS[id].docs[0].values.consignee : FLEET[id].parties.exporter.org,
+          trigger: e.triggerLabel.replace(/^on /, ''),
         };
       });
     });
@@ -459,6 +537,7 @@ function Ledger() {
         original: formatUsd(x.amountUsd),
         dueH: x.dueH,
         status: x.status === 'settled' ? 'Settled' : x.status === 'disputed' ? 'Disputed' : 'Pending',
+        billTo: WATCH_BY_ID[x.shipment]?.exporter ?? ROLES.exporter.org,
       }),
     );
     return [...live, ...fixed].sort((a, b) => a.dueH - b.dueH);
@@ -503,7 +582,7 @@ function Ledger() {
         />
       </div>
       <div className="scroll-quiet max-h-[420px] overflow-auto">
-        <table className="w-full min-w-[720px] border-collapse text-left">
+        <table className="w-full min-w-[820px] border-collapse text-left">
           <thead className="sticky top-0 z-10 bg-white/95 backdrop-blur">
             <tr className="border-y border-[rgba(15,23,42,0.06)] text-[10px] font-semibold tracking-[0.1em] text-subtle uppercase">
               <th className="py-2.5 pr-3 pl-5 font-semibold">Invoice</th>
@@ -511,7 +590,8 @@ function Ledger() {
               <th className="px-3 font-semibold">Category</th>
               <th className="px-3 font-semibold">Due</th>
               <th className="px-3 text-right font-semibold">Amount</th>
-              <th className="py-2.5 pr-5 pl-3 font-semibold">Status</th>
+              <th className="px-3 font-semibold">Status</th>
+              <th className="py-2.5 pr-5 pl-1" aria-label="Preview" />
             </tr>
           </thead>
           <tbody>
@@ -523,7 +603,8 @@ function Ledger() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="border-b border-[rgba(15,23,42,0.05)] text-[11.5px] last:border-0 hover:bg-slate-900/[0.02]"
+                  onClick={() => setPreview(r)}
+                  className="cursor-pointer border-b border-[rgba(15,23,42,0.05)] text-[11.5px] last:border-0 hover:bg-cobalt/[0.03]"
                 >
                   <td className="py-2.5 pr-3 pl-5">
                     <div className="num font-semibold text-ink">{r.id}</div>
@@ -541,10 +622,22 @@ function Ledger() {
                     <div className="num font-semibold text-ink">{formatUsd(r.usd)}</div>
                     {r.original.startsWith('₹') && <div className="num text-[10px] text-subtle">{r.original}</div>}
                   </td>
-                  <td className="py-2.5 pr-5 pl-3">
+                  <td className="py-2.5 px-3">
                     <Pill tone={STATUS_TONE[r.status]} pulse={r.status === 'On hold'}>
                       {r.status}
                     </Pill>
+                  </td>
+                  <td className="py-2.5 pr-5 pl-1 text-right">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPreview(r);
+                      }}
+                      className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold whitespace-nowrap text-cobalt transition-colors hover:bg-cobalt/[0.08]"
+                      aria-label={`Preview invoice ${r.id}`}
+                    >
+                      <Eye size={12} /> Preview Invoice
+                    </button>
                   </td>
                 </motion.tr>
               ))}
@@ -555,6 +648,7 @@ function Ledger() {
       <div className="flex items-center gap-1.5 border-t border-[rgba(15,23,42,0.06)] px-5 py-2.5 text-[10.5px] text-subtle">
         <Landmark size={12} /> Escrow rows settle automatically on milestone proof. {ROLES.exporter.label} proceeds are receivables, not spend.
       </div>
+      <InvoicePreview row={preview} onClose={() => setPreview(null)} />
     </Card>
   );
 }

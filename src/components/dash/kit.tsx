@@ -58,7 +58,7 @@ export function DashPage({
 function LiveClock() {
   const nowH = useShipment((s) => s.nowH);
   return (
-    <div className="flex h-10 items-center gap-2 rounded-xl border border-[rgba(15,23,42,0.08)] bg-white/85 px-3 shadow-[0_1px_2px_rgb(15_23_42/0.04)] backdrop-blur-xl max-lg:hidden">
+    <div className="glass flex h-10 items-center gap-2 rounded-xl px-3 max-lg:hidden">
       <Dot tone="emerald" pulse size={6} />
       <div className="leading-none">
         <div className="num text-[12px] font-semibold text-ink">{formatTime(nowH, 'Asia/Kolkata', true)}</div>
@@ -88,7 +88,7 @@ export function Card({
   return (
     <section
       className={clsx(
-        'rounded-[20px] border border-[rgba(15,23,42,0.08)] bg-white/85 shadow-[0_1px_2px_rgb(15_23_42/0.04),0_10px_30px_-12px_rgb(15_23_42/0.10),inset_0_1px_0_rgb(255_255_255/0.8)] backdrop-blur-xl',
+        'glass rounded-[20px]',
         pad && 'p-5 max-md:p-4',
         className,
       )}
@@ -284,7 +284,7 @@ export function ShipmentPicker() {
   const selected = useShipment((s) => s.selected);
   const select = useShipment((s) => s.selectShipment);
   return (
-    <label className="relative flex h-10 items-center rounded-xl border border-[rgba(15,23,42,0.08)] bg-white/85 pr-8 pl-3 shadow-[0_1px_2px_rgb(15_23_42/0.04)] backdrop-blur-xl">
+    <label className="glass relative flex h-10 items-center rounded-xl pr-8 pl-3">
       <span className="sr-only">Active shipment</span>
       <select
         value={selected}

@@ -178,7 +178,8 @@ export function GlobeCore() {
         .replace(
           '#include <roughnessmap_fragment>',
           /* glsl */ `#include <roughnessmap_fragment>
-          roughnessFactor = mix(0.36, 0.94, landMask);`,
+          // Silky daylight ocean against matte porcelain land.
+          roughnessFactor = mix(0.3, 0.92, landMask);`,
         )
         .replace(
           '#include <normal_fragment_maps>',

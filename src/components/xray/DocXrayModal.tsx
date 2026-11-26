@@ -63,6 +63,10 @@ export function XrayStudio({ shipment, onClose, onContinue }: { shipment: Shipme
   const resolveDocs = useShipment((s) => s.resolveDocs);
   const setRole = useShipment((s) => s.setRole);
   const [scanning, setScanning] = useState(false);
+  const [scan, setScan] = useState<'idle' | 'running' | 'done'>('idle');
+  // The field under the pointer: its twins in the other documents and its connectors light up.
+  const [hover, setHover] = useState<XrayFieldKey | null>(null);
+  const pushToast = useShipment((s) => s.pushToast);
 
   const stage = useRef<HTMLDivElement>(null);
   const rows = useRef(new Map<string, HTMLElement>());
@@ -155,6 +159,23 @@ export function XrayStudio({ shipment, onClose, onContinue }: { shipment: Shipme
     setScanning(false);
   };
 
+  const fieldCount = XRAY_FIELDS.length * set.docs.length;
+  const runScan = async () => {
+    setScan('running');
+    await new Promise((r) => setTimeout(r, 1500));
+    setScan('done');
+    pushToast(
+      mismatches
+        ? {
+            tone: 'crimson',
+            title: `AI scan · ${mismatches} discrepancy in ${fieldCount} fields`,
+            body: `Gross Weight: ${XRAY_FIX.from} on the invoice against ${XRAY_FIX.to} on the Packing List · ${Math.round(XRAY_FIX.confidence * 100)}% confidence.`,
+          }
+        : { tone: 'emerald', title: `AI scan · all ${fieldCount} fields reconcile`, body: `${set.docs.map((d) => d.title).join(', ')} agree on consignee, HS code, weight and equipment.` },
+      4200,
+    );
+  };
+
   return (
     <>
       <header className="hairline flex items-center gap-3 border-b px-6 py-4 max-md:px-4">
@@ -168,7 +189,12 @@ export function XrayStudio({ shipment, onClose, onContinue }: { shipment: Shipme
             <span className="font-semibold text-ink">{ROLES[role].label}</span>
           </div>
         </div>
+        <Button tone="secondary" size="sm" onClick={runScan} disabled={scan === 'running' || scanning} className="max-sm:hidden">
+          <ScanLine size={13} className={scan === 'running' ? 'animate-pulse text-cobalt' : 'text-cobalt'} />
+          {scan === 'running' ? 'Scanning…' : scan === 'done' ? 'Re-run AI scan' : 'Run AI Verification Scan'}
+        </Button>
         <Chip tone={mismatches ? 'crimson' : 'emerald'} className="!text-[11px]">
+          {scan === 'done' ? `${fieldCount} fields · ` : ''}
           {mismatches ? `${mismatches} discrepancy` : 'All key fields verified'}
         </Chip>
         {onClose && (
@@ -190,8 +216,9 @@ export function XrayStudio({ shipment, onClose, onContinue }: { shipment: Shipme
           </defs>
           {links.map((l) => {
             const color = l.ok ? PALETTE.emerald : PALETTE.crimson;
+            const dim = hover !== null && l.field !== hover;
             return (
-              <g key={l.key}>
+              <g key={l.key} style={{ opacity: dim ? 0.12 : 1, transition: 'opacity 180ms ease' }}>
                 <motion.path
                   d={l.d}
                   stroke={color}
@@ -206,7 +233,7 @@ export function XrayStudio({ shipment, onClose, onContinue }: { shipment: Shipme
                 <motion.path
                   d={l.d}
                   stroke={color}
-                  strokeWidth={l.ok ? 1.6 : 2.2}
+                  strokeWidth={(l.ok ? 1.6 : 2.2) + (hover === l.field ? 1 : 0)}
                   fill="none"
                   strokeLinecap="round"
                   strokeDasharray={l.ok ? '0' : '6 5'}
@@ -220,9 +247,10 @@ export function XrayStudio({ shipment, onClose, onContinue }: { shipment: Shipme
         </svg>
 
         <AnimatePresence>
-          {scanning && (
+          {(scanning || scan === 'running') && (
             <motion.div
-              className="pointer-events-none absolute inset-y-0 z-20 w-40 bg-gradient-to-r from-transparent via-cobalt/15 to-transparent"
+              key={scanning ? 'resolve' : 'scan'}
+              className="pointer-events-none absolute inset-y-0 z-20 w-40 bg-gradient-to-r from-transparent via-cobalt/15 to-transparent after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] after:bg-cobalt/60 after:shadow-[0_0_18px_4px_rgba(37,99,235,0.35)]"
               initial={{ left: '-10%' }}
               animate={{ left: '100%' }}
               exit={{ opacity: 0 }}
@@ -245,7 +273,7 @@ export function XrayStudio({ shipment, onClose, onContinue }: { shipment: Shipme
                 accent={d.accent}
                 stamp={seeded && d.id === 'ebl' && docsVerified && eblHash ? <ShaStamp hash={eblHash} /> : null}
               >
-                <KeyFields doc={d} labels={set.fieldLabels} register={register} valueOf={valueOf} seeded={seeded} docsVerified={docsVerified} />
+                <KeyFields doc={d} labels={set.fieldLabels} register={register} valueOf={valueOf} seeded={seeded} docsVerified={docsVerified} hover={hover} onHover={setHover} />
                 {d.extras.map((x) => (
                   <Extra key={x.label} label={x.label} value={x.value} redacted={x.pricing && a === 'redacted'} />
                 ))}
@@ -399,6 +427,8 @@ function KeyFields({
   valueOf,
   seeded,
   docsVerified,
+  hover,
+  onHover,
 }: {
   doc: XrayDocSpec;
   labels: Record<XrayFieldKey, string>;
@@ -406,6 +436,8 @@ function KeyFields({
   valueOf: (d: DocKey, f: XrayFieldKey) => string;
   seeded: boolean;
   docsVerified: boolean;
+  hover: XrayFieldKey | null;
+  onHover: (k: XrayFieldKey | null) => void;
 }) {
   return (
     <div className="mb-3 space-y-1">
@@ -417,7 +449,15 @@ function KeyFields({
           <motion.div
             key={key}
             ref={register(doc.id, key)}
-            className="relative rounded-lg px-2.5 py-1.5"
+            onMouseEnter={() => onHover(key)}
+            onMouseLeave={() => onHover(null)}
+            style={{
+              opacity: hover !== null && hover !== key ? 0.5 : 1,
+              outline: hover === key ? '2px solid rgba(37,99,235,0.45)' : '2px solid transparent',
+              outlineOffset: 2,
+              transition: 'opacity 160ms ease, outline-color 160ms ease',
+            }}
+            className="relative cursor-default rounded-lg px-2.5 py-1.5"
             animate={{
               backgroundColor: bad ? 'rgba(220,38,38,0.07)' : fixed ? 'rgba(5,150,105,0.08)' : 'rgba(15,23,42,0.025)',
               boxShadow: bad

@@ -8,7 +8,8 @@
 */
 @theme {
   --color-studio: #f4f7fb;
-  --color-studio-2: #e6eef8;
+  --color-studio-2: #e6effa;
+  --color-porcelain: #fafcff;
   --color-ink: #0f172a;
   --color-ink-2: #1e293b;
   --color-muted: #475569;
@@ -34,9 +35,8 @@
   --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
 
-  --shadow-glass:
-    0 8px 30px rgb(15 23 42 / 0.06), 0 1px 2px rgb(15 23 42 / 0.04),
-    inset 0 1px 0 rgb(255 255 255 / 0.7);
+  /* Beveled glass: a specular top edge plus one soft, wide drop. */
+  --shadow-glass: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 12px 32px rgb(15 23 42 / 0.06);
   --shadow-lift:
     0 24px 60px -12px rgb(15 23 42 / 0.16), 0 8px 24px rgb(15 23 42 / 0.06),
     inset 0 1px 0 rgb(255 255 255 / 0.8);
@@ -83,7 +83,7 @@
     overflow: hidden;
     /* Porcelain studio sweep. The canvas is transparent so this shows through it. */
     background:
-      radial-gradient(120% 90% at 42% 38%, #fbfdff 0%, var(--color-studio) 38%, var(--color-studio-2) 100%),
+      radial-gradient(120% 95% at 42% 40%, var(--color-porcelain) 0%, #f1f6fc 46%, var(--color-studio-2) 100%),
       var(--color-studio);
   }
 
@@ -120,7 +120,7 @@
 @layer components {
   /* Frosted liquid glass. The inset highlight is what stops it reading as flat white. */
   .glass {
-    background: rgb(255 255 255 / 0.75);
+    background: rgb(255 255 255 / 0.8);
     -webkit-backdrop-filter: blur(24px) saturate(1.5);
     backdrop-filter: blur(24px) saturate(1.5);
     border: 1px solid var(--color-hairline);

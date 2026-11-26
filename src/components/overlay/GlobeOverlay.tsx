@@ -3,7 +3,7 @@ import { Box, ChevronRight, Navigation } from 'lucide-react';
 import { useAnchorRef } from '@/components/globe/anchors';
 import { usePlaceSpecs, type LabelSpec } from '@/components/globe/placeSpecs';
 import { DIORAMAS, type DioramaLabel } from '@/components/globe/dioramaData';
-import { RoleAvatar } from '@/components/hud/ui';
+import { CountUp, RoleAvatar } from '@/components/hud/ui';
 import { FLEET } from '@/data/fleet';
 import { PORTS, ROLES, ULIP, type PortCongestion, type UlipConnector } from '@/data/shipment';
 import { formatDuration, formatLatLonShort, formatStamp } from '@/lib/format';
@@ -184,7 +184,9 @@ function TelemetryPin() {
     <div ref={ref} className="pin transition-opacity duration-300">
       <div className="pin-body relative">
         <svg className="pin-leader absolute -bottom-4 overflow-visible" width="20" height="16" aria-hidden>
-          <path d="M1 15.5 L19 1" stroke="rgba(15,23,42,0.3)" strokeWidth="1" fill="none" />
+          <path d="M1 15.5 L19 1" stroke="rgba(15,23,42,0.55)" strokeWidth="1" fill="none" shapeRendering="geometricPrecision" />
+          <circle cx="19" cy="1" r="1.6" fill="white" stroke="rgba(15,23,42,0.45)" strokeWidth="1" />
+          <circle cx="1" cy="15.5" r="2.4" fill={live} stroke="white" strokeWidth="1.2" />
         </svg>
         {/* Orbital distance: a compact pill that expands on hover. */}
         <div className="pin-compact glass-strong pointer-events-auto items-center gap-2 rounded-full py-1 pr-2.5 pl-1">
@@ -192,7 +194,7 @@ function TelemetryPin() {
           <span className="num text-[11.5px] font-semibold text-ink">{def.unit.ref}</span>
           <span className="h-3 w-px bg-slate-900/10" />
           <span className="num text-[11px] font-semibold" style={{ color: live }}>
-            {nextStop.h > h ? formatDuration(nextStop.h - h) : '—'}
+            {nextStop.h > h ? <CountUp value={nextStop.h - h} format={formatDuration} duration={0.6} /> : '—'}
           </span>
           <span className="text-[10px] text-muted">{nextStop.label.replace('ETA ', '→ ')}</span>
         </div>
@@ -229,7 +231,7 @@ function TelemetryPin() {
             <div>
               <div className="eyebrow !text-[8.5px]">{nextStop.label}</div>
               <div className="num text-[13px] font-semibold text-ink">
-                {nextStop.h > h ? formatDuration(nextStop.h - h) : 'reached'}
+                {nextStop.h > h ? <CountUp value={nextStop.h - h} format={formatDuration} duration={0.6} /> : 'reached'}
               </div>
             </div>
             <div>

@@ -1,13 +1,29 @@
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Award, BadgeCheck, Check, Clock, Gauge, Leaf, Lock, ShieldCheck, Sparkles, Star, Timer, TrendingDown, Zap } from 'lucide-react';
 
 import { Bar, Card, DashPage, Pill, RadialGauge, ShipmentPicker } from '@/components/dash/kit';
 import { COSTS } from '@/data/finance';
 import { FLEET } from '@/data/fleet';
-import { INCUMBENT, PARTNER_IDS, PARTNERS, QUOTES, quoteBadges, type Badge, type CarbonGrade, type PartnerId, type Quote } from '@/data/partners';
+import {
+  INCUMBENT,
+  PARTNER_IDS,
+  PARTNERS,
+  PRIORITY_PRESETS,
+  QUOTES,
+  quoteBadges,
+  scoreQuotes,
+  type Badge,
+  type CarbonGrade,
+  type PartnerId,
+  type Priority,
+  type Quote,
+  type Weights,
+} from '@/data/partners';
 import { formatUsd } from '@/lib/format';
 import { TONE_HEX, type Tone } from '@/lib/palette';
 import { escrowStatus, milestoneStatuses } from '@/lib/schedule';
+import { CountUp } from '@/components/hud/ui';
 import { useScheduleFor, useShipment } from '@/store/shipment';
 
 const BADGE_STYLE: Record<Badge, { tone: Tone; icon: React.ReactNode }> = {
@@ -37,6 +53,8 @@ export default function PartnersPage() {
   const badges = quoteBadges(quotes);
   const def = FLEET[id];
   const lock = useAssignLock();
+  const [weights, setWeights] = useState<Weights>(PRIORITY_PRESETS[0].weights);
+  const scored = scoreQuotes(quotes, weights);
 
   return (
     <DashPage
@@ -56,9 +74,20 @@ export default function PartnersPage() {
         <span className="text-[11px] text-subtle">All-in USD · {def.incoterm}</span>
       </div>
 
+      <Priorities weights={weights} onChange={setWeights} />
+
       <div className="mt-3 grid grid-cols-4 gap-4 max-[1320px]:grid-cols-2 max-sm:grid-cols-1">
-        {quotes.map((q) => (
-          <QuoteCard key={q.partner} q={q} badges={badges[q.partner] ?? []} assigned={assigned === q.partner} current={COSTS[id].freight} lock={lock} />
+        {scored.map((s, rank) => (
+          <QuoteCard
+            key={s.quote.partner}
+            q={s.quote}
+            score={s.score}
+            rank={rank}
+            badges={badges[s.quote.partner] ?? []}
+            assigned={assigned === s.quote.partner}
+            current={COSTS[id].freight}
+            lock={lock}
+          />
         ))}
       </div>
 
@@ -133,22 +162,115 @@ function Monogram({ text, accent, size = 36 }: { text: string; accent: string; s
   );
 }
 
-function QuoteCard({ q, badges, assigned, current, lock }: { q: Quote; badges: Badge[]; assigned: boolean; current: number; lock: string | null }) {
+const PRIORITY_META: Record<Priority, { label: string; hint: string; tone: Tone }> = {
+  cost: { label: 'Cost', hint: 'All-in price', tone: 'cobalt' },
+  speed: { label: 'Transit speed', hint: 'Transit days + customs hours', tone: 'violet' },
+  carbon: { label: 'Carbon', hint: 'g CO₂e / t-km', tone: 'emerald' },
+  reliability: { label: 'Reliability', hint: 'OTP + demurrage rate', tone: 'amber' },
+};
+
+/** Weight the four criteria; the bids below re-score and re-rank as you drag. */
+function Priorities({ weights, onChange }: { weights: Weights; onChange: (w: Weights) => void }) {
+  const preset = PRIORITY_PRESETS.find((p) => (Object.keys(p.weights) as Priority[]).every((k) => p.weights[k] === weights[k]));
+  return (
+    <Card className="mt-3" pad={false}>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4">
+        <div>
+          <div className="eyebrow">Your priorities</div>
+          <div className="text-[13px] font-semibold text-ink">Re-rank the bids for what matters on this shipment</div>
+        </div>
+        <div role="radiogroup" aria-label="Priority preset" className="flex flex-wrap gap-1.5">
+          {PRIORITY_PRESETS.map((p) => {
+            const active = preset?.id === p.id;
+            return (
+              <button
+                key={p.id}
+                role="radio"
+                aria-checked={active}
+                onClick={() => onChange(p.weights)}
+                className={`h-8 rounded-full px-3 text-[11.5px] font-semibold transition-colors ${active ? 'bg-cobalt text-white shadow-[0_6px_14px_-8px_rgb(37_99_235/0.9)]' : 'bg-slate-900/[0.05] text-muted hover:text-ink'}`}
+              >
+                {p.label}
+              </button>
+            );
+          })}
+          {!preset && <span className="grid h-8 place-items-center rounded-full bg-violet/10 px-3 text-[11.5px] font-semibold text-violet">Custom</span>}
+        </div>
+      </div>
+      <div className="grid grid-cols-4 gap-5 px-5 pt-3 pb-4 max-lg:grid-cols-2 max-sm:grid-cols-1">
+        {(Object.keys(PRIORITY_META) as Priority[]).map((k) => (
+          <label key={k} className="block">
+            <span className="flex items-baseline justify-between text-[11.5px]">
+              <span className="font-semibold text-ink">{PRIORITY_META[k].label}</span>
+              <span className="num font-semibold" style={{ color: TONE_HEX[PRIORITY_META[k].tone] }}>
+                {weights[k]}
+              </span>
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={weights[k]}
+              onChange={(e) => onChange({ ...weights, [k]: Number(e.target.value) })}
+              aria-label={`${PRIORITY_META[k].label} weight`}
+              className="mt-1.5 w-full"
+              style={{ accentColor: TONE_HEX[PRIORITY_META[k].tone] }}
+            />
+            <span className="text-[10px] text-subtle">{PRIORITY_META[k].hint}</span>
+          </label>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function QuoteCard({
+  q,
+  score,
+  rank,
+  badges,
+  assigned,
+  current,
+  lock,
+}: {
+  q: Quote;
+  score: number;
+  rank: number;
+  badges: Badge[];
+  assigned: boolean;
+  current: number;
+  lock: string | null;
+}) {
   const p = PARTNERS[q.partner];
   const assign = useShipment((s) => s.assignPartner);
   const delta = q.priceUsd - current;
   return (
     <motion.article
       layout
-      className="relative flex flex-col rounded-[20px] border bg-white/90 p-4 shadow-[0_1px_2px_rgb(15_23_42/0.04),0_12px_30px_-16px_rgb(15_23_42/0.18)] backdrop-blur-xl"
+      className="relative flex flex-col rounded-[20px] border bg-white/80 p-4 backdrop-blur-xl"
       animate={{
         borderColor: assigned ? 'rgba(5,150,105,0.55)' : 'rgba(15,23,42,0.08)',
         boxShadow: assigned
-          ? '0 0 0 4px rgba(5,150,105,0.10), 0 18px 40px -18px rgba(5,150,105,0.45)'
-          : '0 1px 2px rgba(15,23,42,0.04), 0 12px 30px -16px rgba(15,23,42,0.18)',
+          ? 'inset 0 1px 0 rgba(255,255,255,0.9), 0 0 0 4px rgba(5,150,105,0.10), 0 18px 40px -18px rgba(5,150,105,0.45)'
+          : 'inset 0 1px 0 rgba(255,255,255,0.9), 0 12px 32px rgba(15,23,42,0.06)',
       }}
       transition={{ duration: 0.45 }}
     >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className={`num inline-flex h-6 items-center rounded-full px-2 text-[11px] font-bold ${rank === 0 ? 'bg-cobalt text-white' : 'bg-slate-900/[0.05] text-muted'}`}>
+          #{rank + 1}
+        </span>
+        <span className="flex items-baseline gap-1 text-[11px] text-muted">
+          Match
+          <span className="num text-[15px] font-semibold text-ink">
+            <CountUp value={score} format={(n) => Math.round(n).toString()} duration={0.5} />
+          </span>
+        </span>
+      </div>
+      <div className="mb-2 h-1 overflow-hidden rounded-full bg-slate-900/[0.05]">
+        <motion.div className="h-full rounded-full bg-cobalt" animate={{ width: `${Math.max(3, score)}%` }} transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }} />
+      </div>
       <div className="flex min-h-[22px] flex-wrap gap-1">
         {badges.map((b) => (
           <span
@@ -177,7 +299,9 @@ function QuoteCard({ q, badges, assigned, current, lock }: { q: Quote; badges: B
 
       <div className="mt-4 flex items-end justify-between">
         <div>
-          <div className="num text-[28px] leading-none font-semibold tracking-[-0.03em] text-ink">{formatUsd(q.priceUsd)}</div>
+          <div className="num text-[28px] leading-none font-semibold tracking-[-0.03em] text-ink">
+            <CountUp value={q.priceUsd} format={(n) => formatUsd(n)} />
+          </div>
           <div className="num mt-1 text-[11px] font-semibold" style={{ color: TONE_HEX[delta <= 0 ? 'emerald' : 'amber'] }}>
             {delta <= 0 ? '−' : '+'}
             {formatUsd(Math.abs(delta))} vs current rate

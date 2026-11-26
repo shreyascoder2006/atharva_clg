@@ -38,7 +38,7 @@ export default function DocumentsPage() {
       subtitle="One vault for every trade document. AI X-Ray reconciles key fields across documents, RBAC decides who sees what, and every signature is chained by SHA-256."
       actions={<ShipmentPicker />}
     >
-      <section className="overflow-hidden rounded-[20px] border border-[rgba(15,23,42,0.08)] bg-white/85 shadow-[0_1px_2px_rgb(15_23_42/0.04),0_10px_30px_-12px_rgb(15_23_42/0.10)] backdrop-blur-xl">
+      <section className="glass overflow-hidden rounded-[20px]">
         <XrayStudio key={id} shipment={id} onContinue={() => setView('tower')} />
       </section>
 
@@ -426,6 +426,33 @@ function Verifier({ doc, steps, hashes, index }: { doc: string; steps: Step[]; h
   const [result, setResult] = useState<{ ok: boolean; at: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const pushToast = useShipment((s) => s.pushToast);
+
+  const copy = async () => {
+    let ok: boolean;
+    try {
+      await navigator.clipboard.writeText(hash);
+      ok = true;
+    } catch {
+      // Clipboard API refused (insecure context or permissions): fall back to a selection copy.
+      const ta = document.createElement('textarea');
+      ta.value = hash;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      ok = document.execCommand('copy');
+      ta.remove();
+    }
+    setCopied(ok);
+    setTimeout(() => setCopied(false), 1400);
+    pushToast(
+      ok
+        ? { tone: 'emerald', title: 'SHA-256 copied to clipboard', body: `${steps[index].party} signature on ${doc} · ${hash.slice(0, 16)}…${hash.slice(-8)}` }
+        : { tone: 'amber', title: 'Copy blocked by the browser', body: 'Select the hash in the panel and copy it manually.' },
+      3200,
+    );
+  };
 
   const verify = async () => {
     setBusy(true);
@@ -441,10 +468,8 @@ function Verifier({ doc, steps, hashes, index }: { doc: string; steps: Step[]; h
         <div className="eyebrow">Signature {index + 1} · {steps[index].party}</div>
         <div className="flex items-center gap-1.5">
           <button
-            onClick={() => {
-              void navigator.clipboard?.writeText(hash).then(() => setCopied(true));
-              setTimeout(() => setCopied(false), 1400);
-            }}
+            onClick={() => void copy()}
+            aria-label="Copy SHA-256 hash"
             className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-semibold text-muted transition-colors hover:bg-white hover:text-ink"
           >
             {copied ? <Check size={12} className="text-emerald" /> : <Copy size={12} />} {copied ? 'Copied' : 'Copy'}

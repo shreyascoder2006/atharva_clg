@@ -1,5 +1,6 @@
-import { forwardRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
+import { forwardRef, useLayoutEffect, useRef, type ButtonHTMLAttributes, type HTMLAttributes, type ReactNode } from 'react';
 import clsx from 'clsx';
+import { animate } from 'motion/react';
 
 import { ROLES, type Role, type ShipmentId } from '@/data/shipment';
 import { partyOf, useShipment } from '@/store/shipment';
@@ -138,5 +139,54 @@ export function Kbd({ children }: { children: ReactNode }) {
     <kbd className="num rounded border border-hairline bg-white px-1 text-[9px] font-medium text-muted shadow-[0_1px_0_rgb(15_23_42/0.08)]">
       {children}
     </kbd>
+  );
+}
+
+/**
+ * A number that counts to its new value instead of jumping. Tabular figures keep the
+ * width steady while it runs. The text node is driven directly, so a ticking KPI
+ * costs no React renders per frame. Counts up from zero on first mount.
+ */
+export function CountUp({
+  value,
+  format = (n: number) => Math.round(n).toLocaleString('en-US'),
+  duration = 0.9,
+  className,
+}: {
+  value: number;
+  format?: (n: number) => string;
+  duration?: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  const shown = useRef<number | null>(null);
+  const fmt = useRef(format);
+  useLayoutEffect(() => {
+    fmt.current = format;
+  });
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const from = shown.current ?? 0;
+    if (from === value || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      shown.current = value;
+      el.textContent = fmt.current(value);
+      return;
+    }
+    el.textContent = fmt.current(from);
+    const controls = animate(from, value, {
+      duration,
+      ease: [0.16, 1, 0.3, 1],
+      onUpdate: (v) => {
+        shown.current = v;
+        el.textContent = fmt.current(v);
+      },
+    });
+    return () => controls.stop();
+  }, [value, duration]);
+  return (
+    <span ref={ref} className={clsx('tabular-nums', className)}>
+      {format(value)}
+    </span>
   );
 }

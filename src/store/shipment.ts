@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 
 import { CHANNEL_BY_ID, CHANNEL_FOR, CHANNELS, SEED_MESSAGES, type Author, type ChannelId, type ChatMessage, type MsgChip } from '@/data/comms';
 import { FLEET, type Party } from '@/data/fleet';
+import { LANE_BY_ID, type CustomShipment } from '@/data/lanes';
 import { PARTNERS, type PartnerId } from '@/data/partners';
 import { WATCH_BY_ID } from '@/data/portfolio';
 import {
@@ -26,7 +27,7 @@ import {
   type UlipId,
 } from '@/data/shipment';
 import { buildAirSchedule, buildSuratSchedule, type HoldState } from '@/lib/fleet';
-import { ANCHOR_MS, formatDelta, formatStamp, formatUsd } from '@/lib/format';
+import { ANCHOR_MS, formatDelta, formatDuration, formatStamp, formatUsd } from '@/lib/format';
 import { sha256Hex } from '@/lib/hash';
 import type { LatLon } from '@/lib/geo';
 import { viewFromPath, type ViewId } from '@/lib/routes';
@@ -122,6 +123,17 @@ interface Facts {
   readUpTo: Record<ChannelId, number>;
   /** Someone composing a reply, for the typing indicator. */
   typing: { channel: ChannelId; author: Author; shipment: ShipmentId | null } | null;
+  /** Shipments booked from the Shipments dashboard, drawn on the globe as new corridors. */
+  customShipments: CustomShipment[];
+}
+
+export interface NewShipmentInput {
+  laneId: string;
+  cargo: string;
+  grossKg: number;
+  valueUsd: number;
+  exporter: string;
+  forwarder: string;
 }
 
 /** Camera target for a watch-list shipment, which rides an ambient corridor. */
@@ -134,6 +146,9 @@ export interface CorridorFocus {
 }
 
 export type SidebarTab = 'shipments' | 'lens';
+
+/** What a composer quick-insert asks for, so the right party answers. */
+export type ReplyIntent = 'ping-driver' | 'escalate-cha';
 
 export interface ShipmentState extends Facts {
   /** The workspace in the main viewport. The globe stays mounted behind the others. */
@@ -173,9 +188,14 @@ export interface ShipmentState extends Facts {
   /** Select a shipment (or focus a watch-list corridor) and fly there on the globe. */
   trackShipment: (id: string) => void;
   assignPartner: (partner: PartnerId) => void;
+  /** Book a shipment on a lane template; returns its id. */
+  createShipment: (input: NewShipmentInput) => string;
   setChannel: (channel: ChannelId) => void;
   markRead: (channel: ChannelId) => void;
-  postMessage: (text: string) => void;
+  /** Post as the active role. Chips ride along as attachments; an intent picks who answers. */
+  postMessage: (text: string, opts?: { chips?: MsgChip[]; intent?: ReplyIntent }) => void;
+  /** Supply a milestone's proof from the Financials escrow pipeline. Runs the real workflow action. */
+  proveMilestone: (trigger: string) => void;
   /** Flag the open channel's shipment to whoever holds its baton, with a response SLA. */
   escalate: () => void;
 
@@ -291,6 +311,7 @@ function seedFacts(): Facts {
     hold0494: 'active',
     hold0494AtH: null,
     assignments: {},
+    customShipments: [],
     ...seedComms(),
   };
 }
@@ -417,6 +438,16 @@ export const useShipment = create<ShipmentState>((set, get) => {
         set((st) => ({ view: 'tower', selected: id as ShipmentId, focus: null, flightNonce: st.flightNonce + 1 }));
         return;
       }
+      const custom = s.customShipments.find((c) => c.id === id);
+      if (custom) {
+        const lane = LANE_BY_ID[custom.laneId];
+        set((st) => ({
+          view: 'tower',
+          focus: { shipmentId: id, routeId: lane.route.id, cam: lane.focus.cam, camR: lane.focus.camR, nonce: (st.focus?.nonce ?? 0) + 1 },
+        }));
+        get().pushToast({ tone: 'cobalt', title: `Tracking ${id} · ${lane.label}`, body: `${lane.carrier} · booked ${custom.cargo.toLowerCase()}.` }, 4200);
+        return;
+      }
       const w = WATCH_BY_ID[id];
       if (!w) return;
       set((st) => ({
@@ -428,6 +459,20 @@ export const useShipment = create<ShipmentState>((set, get) => {
         { tone: 'slate', title: `Tracking ${id} · ${w.origin} → ${w.destination}`, body: `${w.carrier} · read-only carrier feed on the ${w.origin} corridor.` },
         4200,
       );
+    },
+    createShipment: (input) => {
+      const s = get();
+      const lane = LANE_BY_ID[input.laneId];
+      const id = `SHP-2611-${String(540 + s.customShipments.length).padStart(4, '0')}`;
+      const startH = s.nowH + lane.leadH;
+      const shipment: CustomShipment = { ...input, id, createdH: s.nowH, startH, endH: startH + lane.transitH };
+      set({ customShipments: [...s.customShipments, shipment] });
+      feed('exporter', `${id} booked · ${lane.label} · ${input.cargo}`, 'cobalt');
+      say('customs', 'system', `${id} booked on ${lane.label} (${lane.carrier}). Shipping Bill draft opened for the CHA.`, {
+        chips: [{ kind: 'milestone', label: 'Booking confirmed', tone: 'cobalt' }],
+      });
+      get().pushToast({ tone: 'emerald', title: `${id} booked · ${lane.label}`, body: 'The new corridor is drawn on the 3D globe. Pickup is scheduled and the baton is with the forwarder.' });
+      return id;
     },
     assignPartner: (pid) => {
       const s = get();
@@ -455,27 +500,60 @@ export const useShipment = create<ShipmentState>((set, get) => {
         const last = s.messages.reduce((m, x) => (x.channel === channel && x.id > m ? x.id : m), 0);
         return last > s.readUpTo[channel] ? { readUpTo: { ...s.readUpTo, [channel]: last } } : {};
       }),
-    postMessage: (raw) => {
+    postMessage: (raw, opts = {}) => {
       const text = raw.trim();
-      if (!text) return;
+      if (!text && !opts.chips?.length) return;
       const s = get();
       const channel = s.channel;
       const shipment = CHANNEL_BY_ID[channel].shipment ?? s.selected;
-      const msg: ChatMessage = { id: nextId(), channel, author: s.role, shipment, text, h: s.nowH, mine: true };
+      const msg: ChatMessage = { id: nextId(), channel, author: s.role, shipment, text, h: s.nowH, mine: true, chips: opts.chips };
       set((st) => ({ messages: [...st.messages, msg].slice(-240), readUpTo: { ...st.readUpTo, [channel]: msg.id } }));
 
-      // Someone on the other side answers, so the thread feels like a live room.
-      const reply = composeReply(get(), channel, shipment, text);
+      // The relevant party answers after a short, visible typing beat (1.2 s).
+      const reply = composeReply(get(), channel, shipment, text, opts.intent);
       const epoch = get().messages;
+      const alive = () => get().messages.includes(epoch[epoch.length - 1]); // false after a demo reset
       setTimeout(() => {
-        if (!get().messages.includes(epoch[epoch.length - 1])) return; // demo was reset
-        set({ typing: { channel, author: reply.author, shipment } });
-      }, 450);
+        if (alive()) set({ typing: { channel, author: reply.author, shipment } });
+      }, 300);
       setTimeout(() => {
-        if (!get().messages.includes(epoch[epoch.length - 1])) return;
+        if (!alive()) return;
         set({ typing: null });
-        say(channel, reply.author, reply.text, { chips: reply.chips, shipment });
-      }, 2000);
+        say(channel, reply.author, reply.text, { chips: reply.chips, shipment, via: reply.via });
+        if (opts.intent === 'escalate-cha') get().pushToast({ tone: 'amber', title: `Escalated to the CHA · ${shipment}`, body: 'Response SLA 2h. The thread and the CHA workspace both carry the flag.' }, 3600);
+      }, 1500);
+    },
+
+    proveMilestone: (trigger) => {
+      const s = get();
+      if (s.selected === 'SHP-2611-0494') {
+        if (trigger === 'leo') s.resolveHold0494();
+        return;
+      }
+      if (s.selected !== FLAGSHIP) return;
+      if (trigger === 'gateIn') s.confirmGateIn();
+      else if (trigger === 'leo') s.clearCustoms();
+      else if (trigger === 'loaded') {
+        if (s.actuals.leo === undefined || s.actuals.loaded !== undefined) return;
+        const t = s.nowH;
+        // Loading needs a VGM on file; the weighbridge reading is submitted first if missing.
+        if (s.actuals.vgm === undefined) s.submitVgm();
+        set((st) => ({ actuals: { ...st.actuals, loaded: t } }));
+        get().pushSonar(place('jnpt'), 'emerald');
+        get().pushUlip('portgate', `Loaded on board · ${SHIPMENT.vessel} ${SHIPMENT.voyage} · bay 34`);
+        feed('forwarder', `Shipped on board · ${CONTAINER} · ${SHIPMENT.vessel}`, 'emerald');
+        say('shp-0482', 'forwarder', `Box is loaded on ${SHIPMENT.vessel}, bay 34. Shipped-on-board confirmed by the carrier.`, {
+          chips: [
+            { kind: 'milestone', label: 'Shipped on board', tone: 'emerald' },
+            { kind: 'escrow', label: `${ESCROW[2].amount} released`, tone: 'emerald' },
+          ],
+        });
+        get().pushToast({ tone: 'emerald', title: 'Shipped on board · proof verified', body: `${ESCROW[2].amount} released to ${payeeOf(get().assignments, FLAGSHIP, ESCROW[2])}.` });
+      } else if (trigger === 'lc') {
+        if (s.actuals.lc !== undefined) return;
+        if (s.actuals.ebl === undefined) s.issueEbl();
+        get().presentLc();
+      }
     },
 
     escalate: () => {
@@ -799,24 +877,59 @@ const ACK: Record<Role, string> = {
  * and customs questions get a factual answer from live state; anything else is
  * acknowledged by whoever holds the baton.
  */
-function composeReply(s: ShipmentState, channel: ChannelId, shipment: ShipmentId, text: string): { author: Author; text: string; chips?: MsgChip[] } {
+function composeReply(
+  s: ShipmentState,
+  channel: ChannelId,
+  shipment: ShipmentId,
+  text: string,
+  intent?: ReplyIntent,
+): { author: Author; text: string; chips?: MsgChip[]; via?: 'driver-app' } {
   const q = text.toLowerCase();
   const def = FLEET[shipment];
   const schedule = getScheduleFor(shipment);
+  // Whoever is asked answers, unless the asker is that person; then the Co-Pilot does.
+  const from = (role: Role): Author => (role === s.role ? 'ai' : role);
+
+  if (intent === 'ping-driver' || /\bdriver\b|ping/.test(q)) {
+    const toGate = schedule.gateInH - s.nowH;
+    const done = shipment === FLAGSHIP ? s.actuals.gateIn !== undefined : toGate <= 0;
+    return {
+      author: 'transporter',
+      via: 'driver-app',
+      text: done
+        ? `Already gated in at ${shipment === FLAGSHIP ? 'JNPT Gate 4' : shipment === 'SHP-2611-0494' ? 'Mundra MICT Gate 2' : 'the BLR cargo terminal'}. Trip closed on my side.`
+        : `On the expressway past Khalapur toll, moving at 52 km/h. About ${formatDuration(toGate)} to Gate 4.`,
+      chips: [done ? { kind: 'milestone', label: 'Gate-in done', tone: 'emerald' } : { kind: 'eta', label: `Gate-in in ${formatDuration(toGate)}`, tone: 'violet' }],
+    };
+  }
+  if (intent === 'escalate-cha') {
+    const held = shipment === 'SHP-2611-0494' ? s.hold0494 === 'active' : s.customs === 'active' || !s.docsVerified;
+    return {
+      author: from('broker'),
+      text: held
+        ? 'Escalation received. I am taking this one first and will post the LEO the moment ICEGATE grants it.'
+        : 'Escalation received. Customs is clear on this shipment; nothing is pending with the CHA.',
+      chips: [{ kind: 'alert', label: 'Escalation acknowledged · SLA 2h', tone: 'amber' }],
+    };
+  }
   if (/\beta\b|arriv|when|delay/.test(q)) {
     const stamp = formatStamp(schedule.deliveredH, def.destTz);
+    const holder = batonAt(schedule, s.nowH, s.nowH).role;
+    // The party moving the box answers: the driver before gate-in, otherwise the forwarder.
+    const who: Role = holder === 'transporter' ? 'transporter' : 'forwarder';
     return {
-      author: 'ai',
-      text: `Live ETA for ${shipment}: ${def.destination}, ${stamp} local. Every party on the channel sees the same figure.`,
+      author: from(who),
+      via: who === 'transporter' && from(who) === 'transporter' ? 'driver-app' : undefined,
+      text: `ETA ${def.destination} is ${stamp} local, on the live schedule. I will post here if it moves.`,
       chips: [{ kind: 'eta', label: `ETA ${def.destination} · ${stamp}`, tone: 'cobalt' }],
     };
   }
   if (/invoice|document|\bdocs?\b|weight|x-?ray|mismatch|e-?bl/.test(q) && shipment === FLAGSHIP) {
     return s.docsVerified
-      ? { author: 'ai', text: 'All four key fields match across the CI, Packing List and e-BL. The e-BL hash is anchored.', chips: [{ kind: 'doc', label: 'Docs verified', tone: 'emerald' }] }
+      ? { author: from('broker'), text: 'All four key fields match across the CI, Packing List and e-BL, and the e-BL hash is anchored. I am filing on that set.', chips: [{ kind: 'doc', label: 'Docs verified', tone: 'emerald' }] }
       : {
-          author: 'ai',
-          text: `The gross weight gap is still open: ${XRAY_FIX.from} on the invoice against ${XRAY_FIX.to} on the Packing List. Resolve it in the Document Studio.`,
+          author: from('broker'),
+          text: `Not yet: the invoice still says ${XRAY_FIX.from} against ${XRAY_FIX.to} on the Packing List. I cannot file for LEO until the CI is amended in the Document Studio.`,
           chips: [{ kind: 'alert', label: 'Gross weight mismatch', tone: 'crimson' }],
         };
   }
