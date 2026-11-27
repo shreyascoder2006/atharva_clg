@@ -1,0 +1,152 @@
+[
+ {
+  "i": 0,
+  "kind": "card",
+  "ref": "deck",
+  "text": "Now, let's walk through the deck.",
+  "start": 0.0,
+  "end": 2.723,
+  "voice": 0.45,
+  "dur": 2.04
+ },
+ {
+  "i": 1,
+  "kind": "slide",
+  "ref": 2,
+  "text": "Logistics costs India about eight percent of G D P, and only one point two percent of bills of lading are electronic.",
+  "start": 2.723,
+  "end": 10.933,
+  "voice": 3.173,
+  "dur": 7.11
+ },
+ {
+  "i": 2,
+  "kind": "slide",
+  "ref": 3,
+  "text": "Our fishbone traces the delays to six root causes, while the rails, like U-LIP and e-way bills, already exist.",
+  "start": 10.933,
+  "end": 19.36,
+  "voice": 11.383,
+  "dur": 7.465215419501134
+ },
+ {
+  "i": 3,
+  "kind": "slide",
+  "ref": 4,
+  "text": "So the solution puts one record at the centre, with four roles and six capabilities around it.",
+  "start": 19.36,
+  "end": 25.46,
+  "voice": 19.81,
+  "dur": 5.07
+ },
+ {
+  "i": 4,
+  "kind": "slide",
+  "ref": 6,
+  "text": "We built it in six phases, from discovery to verification, with the same tested loop for every feature.",
+  "start": 25.46,
+  "end": 31.922,
+  "voice": 25.91,
+  "dur": 5.42
+ },
+ {
+  "i": 5,
+  "kind": "slide",
+  "ref": 7,
+  "text": "Seven layers sit around a pure schedule engine, built with React, TypeScript, three J S and Zustand.",
+  "start": 31.922,
+  "end": 39.023,
+  "voice": 32.372,
+  "dur": 6.04
+ },
+ {
+  "i": 6,
+  "kind": "slide",
+  "ref": 9,
+  "text": "And every AI decision shows its evidence, its formula, and its confidence.",
+  "start": 39.023,
+  "end": 44.171,
+  "voice": 39.473,
+  "dur": 4.16
+ },
+ {
+  "i": 7,
+  "kind": "slide",
+  "ref": 11,
+  "text": "It's software only, with a twelve-week pilot on one lane, and a network flywheel to scale.",
+  "start": 44.171,
+  "end": 50.947,
+  "voice": 44.621,
+  "dur": 5.72
+ },
+ {
+  "i": 8,
+  "kind": "card",
+  "ref": "proto",
+  "text": "Now, the working prototype.",
+  "start": 50.947,
+  "end": 53.287,
+  "voice": 51.397,
+  "dur": 1.66
+ },
+ {
+  "i": 9,
+  "kind": "proto",
+  "ref": "tower",
+  "text": "The control tower tracks the live corridor on a 3D globe, with each role's next action on the right.",
+  "start": 53.287,
+  "end": 59.713,
+  "voice": 53.737,
+  "dur": 5.39
+ },
+ {
+  "i": 10,
+  "kind": "proto",
+  "ref": "shipments",
+  "text": "The fleet view lists every shipment, with its milestones, status, and who holds the baton.",
+  "start": 59.713,
+  "end": 65.162,
+  "voice": 60.163,
+  "dur": 5.085170068027211
+ },
+ {
+  "i": 11,
+  "kind": "proto",
+  "ref": "documents",
+  "text": "The document vault links fields across all three documents, with a SHA-256 chain of custody.",
+  "start": 65.162,
+  "end": 72.601,
+  "voice": 65.612,
+  "dur": 6.36
+ },
+ {
+  "i": 12,
+  "kind": "proto",
+  "ref": "partners",
+  "text": "The marketplace re-ranks forwarder bids live as priorities change.",
+  "start": 72.601,
+  "end": 77.459,
+  "voice": 73.051,
+  "dur": 3.88
+ },
+ {
+  "i": 13,
+  "kind": "proto",
+  "ref": "financials",
+  "text": "Financials shows demurrage exposure, and the escrow pipeline where each payout waits for its proof.",
+  "start": 77.459,
+  "end": 83.958,
+  "voice": 77.909,
+  "dur": 5.46
+ },
+ {
+  "i": 14,
+  "kind": "proto",
+  "ref": "integrations",
+  "text": "And sustainability tracks carbon per leg, with greener modes and a CBAM statement.",
+  "start": 83.958,
+  "end": 89.6,
+  "voice": 84.408,
+  "dur": 4.63
+ }
+]

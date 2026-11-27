@@ -8,7 +8,10 @@
 | --- | --- |
 | `Logithon2026_TeamOutliers_OneShipment.pptx` | The 12-slide deck. Each slide carries a timed presenter script in its speaker notes. |
 | `Logithon2026_TeamOutliers_OneShipment.pdf` | The same deck as a PDF. |
-| `OneShipment_Explainer.mp4` | A 90-second **narrated** motion explainer of the deck and prototype, at 1920×1080 and 60 fps. A voiceover explains each scene over music. |
+| `OneShipment_Video_3min.mp4` | **The 3-minute narrated video** at 1920×1080 and 60 fps, in three parts: <br>• 0:00–1:19, the motion explainer; <br>• 1:19–2:49, a walkthrough of the real deck and prototype, where the camera zooms into each key diagram and screen with a spotlight and a key-point caption while the voiceover explains it; <br>• 2:49–3:00, the closer and end card. |
+| `narration_3min.txt` | The full voiceover script for the 3-minute video, with timestamps. |
+| `walkthrough/` | The sources for part 2: the page template and build script, the timing files, the narration and assembly scripts, and the prototype capture script. |
+| `OneShipment_Explainer.mp4` | The 90-second **narrated** motion explainer on its own, at 1920×1080 and 60 fps. A voiceover explains each scene over music. |
 | `OneShipment_Explainer_MusicOnly.mp4` | The same video with music only and no voice. Use it under your own narration. |
 | `explainer/demo.html` | The source of that explainer. Open it in a browser to play it or scrub through it. |
 | `explainer/narration.txt` | The voiceover script with each line's start time. |
@@ -68,6 +71,42 @@ The shipment figures come from the prototype's seeded demo data:
 - ULIP latencies.
 
 Demurrage tariffs, partner quotes and the ULIP connectors are illustrative.
+
+## Regenerating the 3-minute video
+
+1. Render the explainer, as described in the next section.
+
+2. Render the slides at high resolution:
+
+   ```bash
+   pdftoppm -jpeg -scale-to-x 3200 -scale-to-y 1800 Logithon2026_TeamOutliers_OneShipment.pdf walkthrough/img/slide
+   ```
+
+3. Capture the prototype screens with `walkthrough/capture-prototype.cjs`, with the dev server running. Save them as JPEGs in `walkthrough/img/`.
+
+4. Synthesize the walkthrough narration. This sets the segment timings in `segments.json`:
+
+   ```bash
+   python narrate_b.py
+   ```
+
+5. Build the walkthrough page:
+
+   ```bash
+   node build.cjs segments.json
+   ```
+
+6. Render it:
+
+   ```bash
+   node ../explainer/render.cjs walkthrough.html wt.mp4 60 4 4
+   ```
+
+7. Join the explainer, walkthrough and closer, mix the narration over ducked music, and normalise to −16 LUFS:
+
+   ```bash
+   python assemble.py <work dir>
+   ```
 
 ## Regenerating the explainer
 

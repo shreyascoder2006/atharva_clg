@@ -1,0 +1,101 @@
+[
+ {
+  "i": 0,
+  "start": 0.5,
+  "end": 4.9,
+  "dur": 4.31,
+  "scale": 1.0,
+  "fits": true,
+  "text": "Introducing One Shipment, One Digital Platform, from Team Outliers."
+ },
+ {
+  "i": 1,
+  "start": 5.3,
+  "end": 14.3,
+  "dur": 8.94,
+  "scale": 1.0,
+  "fits": true,
+  "text": "One shipment. Four parties. No shared record. The invoice and packing list don't match, and nobody notices until the container misses its vessel."
+ },
+ {
+  "i": 2,
+  "start": 14.7,
+  "end": 23.9,
+  "dur": 8.99,
+  "scale": 0.979,
+  "fits": true,
+  "text": "So we put one live record at the centre. Every role writes to it, and every capability reads from it: document checks, payments, government data, and carbon."
+ },
+ {
+  "i": 3,
+  "start": 24.2,
+  "end": 35.9,
+  "dur": 10.73,
+  "scale": 1.0,
+  "fits": true,
+  "text": "First, the AI document X-ray compares the invoice, packing list and bill of lading, flags the weight mismatch with ninety-seven percent confidence, and fixes it before customs."
+ },
+ {
+  "i": 4,
+  "start": 36.2,
+  "end": 46.9,
+  "dur": 10.5,
+  "scale": 0.944,
+  "fits": true,
+  "text": "Next, payment follows proof. When the driver confirms arrival at the port gate from a phone link, eighteen thousand five hundred rupees is released from escrow, and the baton passes to the customs broker."
+ },
+ {
+  "i": 5,
+  "start": 47.2,
+  "end": 58.4,
+  "dur": 9.88,
+  "scale": 1.0,
+  "fits": true,
+  "text": "When the Red Sea is disrupted, the recovery co-pilot prices every option through the same schedule engine, recommends the Cape route, and one click redraws the corridor for everyone."
+ },
+ {
+  "i": 6,
+  "start": 58.7,
+  "end": 67.9,
+  "dur": 8.52,
+  "scale": 1.0,
+  "fits": true,
+  "text": "Seven workspaces share one store, so each role sees the same truth, and its own next action, from the control tower to finance and sustainability."
+ },
+ {
+  "i": 7,
+  "start": 67.8,
+  "end": 72.9,
+  "dur": 5.131609977324263,
+  "scale": 1.0,
+  "fits": true,
+  "text": "It plugs into U-LIP: forty-three systems, and a hundred and twenty-nine APIs."
+ },
+ {
+  "i": 8,
+  "start": 73.1,
+  "end": 78.9,
+  "dur": 5.31,
+  "scale": 1.0,
+  "fits": true,
+  "text": "Built with React, TypeScript, three J S and Zustand, and forty-one unit tests."
+ },
+ {
+  "i": 9,
+  "start": 79.2,
+  "end": 84.9,
+  "dur": 4.95,
+  "scale": 1.0,
+  "fits": true,
+  "text": "Documents, payments, disruptions, and carbon. All on one shipment record."
+ },
+ {
+  "i": 10,
+  "start": 85.3,
+  "end": 90.4,
+  "dur": 4.47,
+  "scale": 1.0,
+  "fits": true,
+  "text": "One Shipment, One Digital Platform. Thank you, from Team Outliers."
+ }
+]

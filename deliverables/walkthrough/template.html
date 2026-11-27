@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deck and Prototype Walkthrough</title>
+<style>
+/*FONTS*/
+:root{--bg:#F3EDE3;--ink:#2B231D;--mut:#8A7D70;--line:#E4D9C8;--card:#FFFDF9;--clay:#A9552F;--sage:#637A5B;--hl:rgba(169,85,47,.2)}
+*{box-sizing:border-box}
+html,body{margin:0;background:#191512;overflow:hidden}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;background:var(--bg);font-family:Inter,sans-serif;color:var(--ink);transform-origin:0 0}
+.layer{position:absolute;inset:0;display:none}
+.cam{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+.abs{position:absolute;white-space:nowrap}
+.title{left:960px;top:540px;transform:translate(-50%,-50%);font:500 30px Fraunces;letter-spacing:-.01em;text-align:center}
+.w{display:inline-block;position:relative;isolation:isolate}
+.hl{position:absolute;left:-5px;right:-5px;top:10%;bottom:4%;background:var(--hl);border-radius:5px;transform-origin:0 50%;z-index:-1}
+.frame{position:absolute;background:#FFFDF9;border-radius:22px;box-shadow:0 30px 70px rgba(60,40,20,.18),0 0 0 1px rgba(60,40,20,.06);overflow:hidden}
+.spot{position:absolute;border:4px solid var(--clay);border-radius:16px;box-shadow:0 0 0 6000px rgba(43,35,29,.30)}
+.chip{position:absolute;border-radius:999px;display:flex;align-items:center;gap:12px;white-space:nowrap}
+#ui{position:fixed;left:0;right:0;bottom:0;height:56px;background:#221c18;display:flex;align-items:center;gap:14px;padding:0 16px;color:#eee;font:13px Inter}
+#ui button{background:#A9552F;color:#fff;border:0;border-radius:8px;padding:8px 14px;font:600 13px Inter;cursor:pointer}
+#ui input{flex:1}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="ui"><button id="pp">Play</button><input id="scrub" type="range" min="0" max="1000" value="0"><span id="tc">0.0 s</span></div>
+<script>
+/* BEAT SHEET: one segment per narration line (timings come from segments.json, built from the voiceover).
+   card deck   · "Inside the deck" title, highlight sweep        · whoosh + chime
+   slides 2,3,4,6,7,9,11 · overview, push into region 1, glide to region 2, spotlight + key-point caption · whoosh per slide
+   card proto  · "Inside the prototype"                          · whoosh + chime
+   proto tower, shipments, documents, partners, financials, integrations · browser frame, same camera grammar · whoosh
+*/
+const SEGS = /*SEGS*/;
+const VIDEO = { w: 1920, h: 1080, duration: 89.6 };
+window.VIDEO = VIDEO;
+const ICONS = /*ICONS*/;
+
+function spring(t, w = 14, z = 0.82) { if (t <= 0) return 0; if (z >= 1) return 1 - Math.exp(-w * t) * (1 + w * t); const wd = w * Math.sqrt(1 - z * z); return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); }
+const kf = keys => t => { if (t <= keys[0][0]) return keys[0][1]; for (let i = 1; i < keys.length; i++) { const [a, va] = keys[i - 1], [b, vb, e = ease] = keys[i]; if (t <= b) return lerp(va, vb, e((t - a) / (b - a))); } return keys[keys.length - 1][1]; };
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const lerp = (a, b, k) => a + (b - a) * k;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const rng = s => () => (s = (s + 0x6D2B79F5) | 0, s = Math.imul(s ^ (s >>> 15), 1 | s), s ^= s + Math.imul(s ^ (s >>> 7), 61 | s), ((s ^ (s >>> 14)) >>> 0) / 4294967296);
+const easeOut = x => 1 - Math.pow(1 - clamp(x), 3);
+
+const stage = document.getElementById('stage');
+const $ = h => { const d = document.createElement('div'); d.innerHTML = h.trim(); return d.firstElementChild; };
+const ic = (name, size, color) => `<span style="display:inline-flex;width:${size}px;height:${size}px;color:${color}">${ICONS[name].replace('<svg', '<svg width="100%" height="100%"')}</span>`;
+function layer(z = 1) { const L = $('<div class="layer"><div class="cam"></div></div>'); L.style.zIndex = z; stage.appendChild(L); return { L, cam: L.firstElementChild }; }
+function setCam(cam, fx, fy, k) { cam.style.transform = `translate(${(960 - fx * k).toFixed(2)}px,${(540 - fy * k).toFixed(2)}px) scale(${k.toFixed(4)})`; }
+function show(L, t, s, e, fi = 0.45, fo = 0.45) {
+  const v = Math.min(seg(t, s, s + fi), 1 - seg(t, e - fo, e));
+  if (v <= 0.001) { L.style.display = 'none'; return 0; }
+  L.style.display = 'block'; L.style.opacity = v.toFixed(3);
+  const b = (1 - v) * 9; L.style.filter = b > 0.3 ? `blur(${b.toFixed(1)}px)` : 'none';
+  return v;
+}
+function el(parent, html, x, y, w, h) { const e = $(html); e.style.left = x + 'px'; e.style.top = y + 'px'; if (w != null) e.style.width = w + 'px'; if (h != null) e.style.height = h + 'px'; parent.appendChild(e); return e; }
+
+// background dots, drawn once
+{
+  const c = document.createElement('canvas'); c.width = 1920; c.height = 1080; const g = c.getContext('2d');
+  for (let x = 24; x < 1920; x += 32) for (let y = 24; y < 1080; y += 32) { g.fillStyle = 'rgba(138,115,96,0.10)'; g.beginPath(); g.arc(x, y, 1.5, 0, 7); g.fill(); }
+  c.style.position = 'absolute'; stage.appendChild(c);
+}
+
+const META = {
+  2: { name: 'The Problem, in Numbers', cap: '7.97% of GDP · 1.2% of bills of lading electronic · 43 systems on ULIP', r: [[53, 125, 538, 576], [610, 624, 1258, 396]] },
+  3: { name: 'Root Causes and Readiness', cap: 'Six root causes · the rails already exist', r: [[53, 125, 1814, 470], [984, 610, 883, 410]] },
+  4: { name: 'Our Solution', cap: 'One record · four roles · six capabilities', r: [[53, 125, 883, 895], [955, 125, 912, 427]] },
+  6: { name: 'Methodology', cap: 'Discover · Model · Visualise · Connect · Automate · Verify', r: [[53, 125, 1814, 355], [53, 485, 605, 535]] },
+  7: { name: 'Architecture and Tech Stack', cap: 'Seven layers · pure schedule engine · React, TypeScript, three.js, Zustand', r: [[53, 125, 960, 895], [1032, 125, 835, 437]] },
+  9: { name: 'AI Decision Logic', cap: 'Every verdict shows its evidence, formula and confidence', r: [[53, 125, 898, 438], [970, 125, 898, 438]] },
+  11: { name: 'Impact, Feasibility, Roadmap', cap: 'Software only · 12-week pilot · network flywheel', r: [[1262, 125, 605, 523], [658, 595, 586, 424]] },
+  tower: { name: 'Control Tower', url: 'localhost:5173/', cap: 'Live corridor on a 3D globe · role HUD · 4D timeline', r: [[150, 60, 1000, 800], [1195, 140, 400, 430]] },
+  shipments: { name: 'Shipments & Fleet Command', url: 'localhost:5173/shipments', cap: 'Every box: milestones, status, baton holder', r: [[90, 170, 1500, 140], [90, 330, 1500, 430]] },
+  documents: { name: 'Document Vault & AI X-Ray', url: 'localhost:5173/documents', cap: 'Linked fields across three documents · SHA-256 chain of custody', r: [[90, 170, 1500, 600], [1110, 790, 480, 200]] },
+  partners: { name: 'Partner Marketplace', url: 'localhost:5173/partners', cap: 'Forwarder bids re-ranked live as priorities change', r: [[90, 380, 1500, 170], [90, 560, 1500, 400]] },
+  financials: { name: 'Financials, Demurrage & Escrow', url: 'localhost:5173/financials', cap: 'Demurrage exposure · escrow released by proof', r: [[100, 130, 400, 180], [100, 360, 1500, 340]] },
+  integrations: { name: 'Sustainability & ULIP', url: 'localhost:5173/integrations', cap: 'CO<sub>2</sub>e per leg · mode shift · CBAM statement', r: [[100, 178, 900, 300], [100, 632, 1500, 330]] },
+};
+const PROTO_IMG = { tower: 'tower', shipments: 'page-shipments', documents: 'page-documents', partners: 'page-partners', financials: 'page-financials', integrations: 'page-integrations' };
+
+const scenes = [];
+// ---------- section card ----------
+function cardScene(sg) {
+  const { L, cam } = layer(3);
+  const deck = sg.ref === 'deck';
+  const box = el(cam, `<div class="abs title"><div style="font:600 15px Inter;letter-spacing:.2em;color:var(--mut);margin-bottom:14px">${deck ? 'PART 2 · THE PRESENTATION' : 'PART 3 · THE PROTOTYPE'}</div><div>Inside the <span class="w"><i class="hl"></i><span style="font-style:italic;color:var(--clay)">${deck ? 'deck' : 'prototype'}</span></span></div><div style="font:500 16px Inter;color:var(--mut);margin-top:16px">${deck ? '12 slides · problem, method, architecture, impact' : 'seven workspaces on one live store'}</div></div>`, 960, 540);
+  const s = sg.start, e = sg.end;
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.4, 0.4)) return;
+    setCam(cam, 960, 540, kf([[s, 1.5], [s + 0.9, 1.9], [e, 1.98, x => x]])(t));
+    box.style.opacity = seg(t, s + 0.1, s + 0.5);
+    box.querySelector('.hl').style.transform = `scaleX(${ease(seg(t, s + 0.7, s + 1.2))})`;
+  } });
+}
+// ---------- media scene (slide or prototype screen) ----------
+function mediaScene(sg) {
+  const { L, cam } = layer(2);
+  const isSlide = sg.kind === 'slide', m = META[sg.ref];
+  const FW = isSlide ? 1920 : 1600, CH = isSlide ? 0 : 44, FH = isSlide ? 1080 : 1000 + CH;
+  const fr = el(cam, `<div class="frame"></div>`, 0, 0, FW, FH);
+  if (!isSlide) {
+    el(fr, `<div class="abs" style="left:0;top:0;right:0;height:${CH}px;background:#F1EAE0;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:9px;padding-left:18px"><i style="width:13px;height:13px;border-radius:50%;background:#E0A894"></i><i style="width:13px;height:13px;border-radius:50%;background:#E5CB8E"></i><i style="width:13px;height:13px;border-radius:50%;background:#B7C6A8"></i><div style="margin-left:22px;width:520px;height:26px;border-radius:8px;background:#FFFDF9;border:1px solid var(--line);font:500 14px Inter;color:var(--mut);display:flex;align-items:center;padding-left:12px">${m.url}</div></div>`, 0, 0, FW, CH);
+  }
+  el(fr, `<img src="img/${isSlide ? 'slide-' + String(sg.ref).padStart(2, '0') : PROTO_IMG[sg.ref]}.jpg" style="position:absolute;left:0;top:${CH}px;width:${FW}px;height:${FH - CH}px">`, 0, CH, FW, FH - CH);
+  const spot = el(cam, `<div class="spot"></div>`, 0, 0, 10, 10);
+  const label = el(L, `<div class="chip" style="height:46px;padding:0 20px 0 8px;background:#2B231D;color:#fff;font:600 16px Inter"><span style="width:32px;height:32px;border-radius:50%;background:var(--clay);display:inline-flex;align-items:center;justify-content:center">${ic(isSlide ? 'Presentation' : 'MonitorSmartphone', 18, '#fff')}</span>${isSlide ? `The deck · ${String(sg.ref).padStart(2, '0')} / 12` : 'The prototype'}<span style="color:#C9BBA8;font-weight:500">· ${m.name}</span></div>`, 36, 28);
+  const cap = el(L, `<div class="chip" style="height:54px;padding:0 26px;background:#FFFDF9;border:1.5px solid var(--line);box-shadow:0 12px 30px rgba(60,40,20,.14);font:600 21px Inter;transform:translateX(-50%)"><span style="width:10px;height:10px;border-radius:50%;background:var(--clay)"></span><span>${m.cap}</span></div>`, 960, 998);
+  const s = sg.start, e = sg.end, Ln = e - s;
+  const yOff = CH;
+  const k0 = Math.min(1920 * 0.86 / FW, 1080 * 0.80 / FH);
+  const focus = r => { const [x, y, w, h] = r; const k = clamp(Math.min(1920 * 0.86 / w, 1080 * 0.70 / h), k0 * 1.08, 2.3); return [x + w / 2, y + h / 2 + yOff, k]; };
+  const [a, b] = m.r.map(focus);
+  const ov = [FW / 2, FH / 2, k0];
+  const keys = [[s, ...ov], [s + 0.16 * Ln, ...ov], [s + 0.36 * Ln, ...a], [s + 0.58 * Ln, ...a], [s + 0.8 * Ln, ...b], [e, b[0], b[1], b[2] * 1.03, x => x]];
+  const fx = kf(keys.map(k => [k[0], k[1], k[4]])), fy = kf(keys.map(k => [k[0], k[2], k[4]])), kk = kf(keys.map(k => [k[0], k[3], k[4]]));
+  const ra = m.r[0], rb = m.r[1];
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    setCam(cam, fx(t), fy(t), kk(t));
+    const p = ease(seg(t, s + 0.58 * Ln, s + 0.8 * Ln));
+    const r = [0, 1, 2, 3].map(i => lerp(ra[i], rb[i], p));
+    const pad = 10;
+    spot.style.left = (r[0] - pad) + 'px'; spot.style.top = (r[1] + yOff - pad) + 'px'; spot.style.width = (r[2] + 2 * pad) + 'px'; spot.style.height = (r[3] + 2 * pad) + 'px';
+    const so = seg(t, s + 0.3 * Ln, s + 0.38 * Ln) * (1 - seg(t, e - 0.5, e - 0.2));
+    spot.style.opacity = so.toFixed(3);
+    const lv = easeOut(seg(t, s + 0.15, s + 0.55)); label.style.opacity = lv; label.style.transform = `translateY(${(1 - lv) * -12}px)`;
+    const cv = easeOut(seg(t, s + 0.22 * Ln, s + 0.22 * Ln + 0.4)); cap.style.opacity = cv; cap.style.transform = `translateX(-50%) translateY(${(1 - cv) * 16}px)`;
+  } });
+}
+SEGS.forEach(sg => (sg.kind === 'card' ? cardScene : mediaScene)(sg));
+
+window.seek = function (t) { t = clamp(t, 0, VIDEO.duration - 1e-4); for (const sc of scenes) sc.update(t); };
+
+// ---------- audio: the explainer's bed continued (same key and tempo) ----------
+window.buildAudio = async function (ctx) {
+  const sr = ctx.sampleRate, D = VIDEO.duration;
+  const master = ctx.createDynamicsCompressor(); master.threshold.value = -16; master.ratio.value = 3; master.connect(ctx.destination);
+  const out = ctx.createGain(); out.gain.value = 0.9; out.connect(master);
+  const R = rng(123);
+  const noise = ctx.createBuffer(1, sr * 2, sr); { const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = R() * 2 - 1; }
+  const beat = 60 / 104, bar = beat * 4, midi = n => 440 * Math.pow(2, (n - 69) / 12);
+  const chords = [[53, 57, 60, 64], [57, 60, 64, 67], [48, 55, 59, 64], [55, 59, 62, 64]];
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1500; lp.connect(out);
+  function tone(f, t0, dur, type, g, dest = lp, att = 0.02, rel = 0.3) {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+    const a = ctx.createGain(); a.gain.setValueAtTime(0, t0); a.gain.linearRampToValueAtTime(g, t0 + att); a.gain.setValueAtTime(g, Math.max(t0 + att, t0 + dur - rel)); a.gain.linearRampToValueAtTime(0, t0 + dur);
+    o.connect(a); a.connect(dest); o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function nz(t0, dur, f, q, g, type = 'bandpass', sweepTo) {
+    const s = ctx.createBufferSource(); s.buffer = noise; const bf = ctx.createBiquadFilter(); bf.type = type; bf.frequency.setValueAtTime(f, t0); if (sweepTo) bf.frequency.exponentialRampToValueAtTime(sweepTo, t0 + dur); bf.Q.value = q;
+    const a = ctx.createGain(); a.gain.setValueAtTime(0, t0); a.gain.linearRampToValueAtTime(g, t0 + Math.min(0.05, dur / 3)); a.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
+    s.connect(bf); bf.connect(a); a.connect(out); s.start(t0); s.stop(t0 + dur + 0.05);
+  }
+  for (let b = 0, t0 = 0; t0 < D; b++, t0 += bar * 2) {
+    const ch = chords[b % 4], dur = Math.min(bar * 2 + 0.6, D - t0 + 0.6);
+    ch.forEach(n => { tone(midi(n), t0, dur, 'triangle', 0.034, lp, 0.8, 1.0); tone(midi(n) * 1.004, t0, dur, 'sine', 0.02, lp, 0.9, 1.0); });
+    tone(midi(ch[0] - 12), t0, dur, 'sine', 0.06, lp, 0.3, 0.8);
+  }
+  for (let i = 0, t0 = 0; t0 < D - 0.3; i++, t0 += beat / 2) {
+    const ch = chords[Math.floor(t0 / (bar * 2)) % 4]; const n = ch[[0, 2, 1, 3, 2, 1, 3, 2][i % 8]] + 12;
+    tone(midi(n), t0, 0.35, 'triangle', i % 2 ? 0.02 : 0.027, lp, 0.005, 0.3);
+  }
+  for (let t0 = 0; t0 < D - 0.5; t0 += beat) {
+    const bi = Math.round(t0 / beat);
+    if (bi % 2 === 0) { const o = ctx.createOscillator(); const a = ctx.createGain(); o.frequency.setValueAtTime(120, t0); o.frequency.exponentialRampToValueAtTime(45, t0 + 0.18); a.gain.setValueAtTime(0.2, t0); a.gain.exponentialRampToValueAtTime(0.001, t0 + 0.25); o.connect(a); a.connect(out); o.start(t0); o.stop(t0 + 0.3); }
+    nz(t0 + beat / 2, 0.06, 8000, 0.8, 0.03, 'highpass');
+  }
+  SEGS.forEach(sg => {
+    nz(sg.start + 0.05, 0.7, 400, 0.7, 0.07, 'bandpass', 3000);
+    if (sg.kind === 'card') [1, 2.76, 5.4].forEach((m, i) => tone(midi(84) * m / 2, sg.start + 0.6, 1.4, 'sine', 0.05 / (i + 1), out, 0.005, 1.3));
+  });
+};
+
+const RENDER = location.search.includes('render');
+const ui = document.getElementById('ui');
+if (RENDER) { ui.remove(); document.body.style.background = '#000'; }
+else {
+  const fit = () => { const k = Math.min(innerWidth / 1920, (innerHeight - 56) / 1080); stage.style.transform = `scale(${k})`; };
+  addEventListener('resize', fit); fit();
+  let buf, ac, src, startAt = 0, offset = 0, playing = false;
+  const pp = document.getElementById('pp'), sc = document.getElementById('scrub'), tc = document.getElementById('tc');
+  async function play() {
+    ac ??= new AudioContext();
+    if (!buf) { const off = new OfflineAudioContext(2, Math.ceil(48000 * VIDEO.duration), 48000); await buildAudio(off); buf = await off.startRendering(); }
+    src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination);
+    src.start(0, offset % VIDEO.duration); startAt = ac.currentTime; playing = true; pp.textContent = 'Pause';
+  }
+  function pause() { if (!playing) return; offset += ac.currentTime - startAt; src.stop(); playing = false; pp.textContent = 'Play'; }
+  const now = () => playing ? (offset + ac.currentTime - startAt) % VIDEO.duration : offset;
+  pp.onclick = () => playing ? pause() : play();
+  sc.oninput = () => { const was = playing; pause(); offset = sc.value / 1000 * VIDEO.duration; if (was) play(); };
+  (function loop() { const t = now(); seek(t); sc.value = t / VIDEO.duration * 1000; tc.textContent = t.toFixed(1) + ' s'; requestAnimationFrame(loop); })();
+}
+seek(0);
+</script>
+</body>
+</html>

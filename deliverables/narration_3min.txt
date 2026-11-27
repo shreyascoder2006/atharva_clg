@@ -1,0 +1,29 @@
+Voiceover for OneShipment_Video_3min.mp4 (Piper TTS, voice en_US-lessac-high).
+0:00-1:19 explainer · 1:19-2:49 deck and prototype walkthrough · 2:49-3:00 closer.
+
+0:00.50  Introducing One Shipment, One Digital Platform, from Team Outliers.
+0:05.30  One shipment. Four parties. No shared record. The invoice and packing list don't match, and nobody notices until the container misses its vessel.
+0:14.70  So we put one live record at the centre. Every role writes to it, and every capability reads from it: document checks, payments, government data, and carbon.
+0:24.20  First, the AI document X-ray compares the invoice, packing list and bill of lading, flags the weight mismatch with ninety-seven percent confidence, and fixes it before customs.
+0:36.20  Next, payment follows proof. When the driver confirms arrival at the port gate from a phone link, eighteen thousand five hundred rupees is released from escrow, and the baton passes to the customs broker.
+0:47.20  When the Red Sea is disrupted, the recovery co-pilot prices every option through the same schedule engine, recommends the Cape route, and one click redraws the corridor for everyone.
+0:58.70  Seven workspaces share one store, so each role sees the same truth, and its own next action, from the control tower to finance and sustainability.
+1:07.80  It plugs into U-LIP: forty-three systems, and a hundred and twenty-nine APIs.
+1:13.10  Built with React, TypeScript, three J S and Zustand, and forty-one unit tests.
+1:19.55  Now, let's walk through the deck.
+1:22.27  Logistics costs India about eight percent of G D P, and only one point two percent of bills of lading are electronic.
+1:30.48  Our fishbone traces the delays to six root causes, while the rails, like U-LIP and e-way bills, already exist.
+1:38.91  So the solution puts one record at the centre, with four roles and six capabilities around it.
+1:45.01  We built it in six phases, from discovery to verification, with the same tested loop for every feature.
+1:51.47  Seven layers sit around a pure schedule engine, built with React, TypeScript, three J S and Zustand.
+1:58.57  And every AI decision shows its evidence, its formula, and its confidence.
+2:03.72  It's software only, with a twelve-week pilot on one lane, and a network flywheel to scale.
+2:10.50  Now, the working prototype.
+2:12.84  The control tower tracks the live corridor on a 3D globe, with each role's next action on the right.
+2:19.26  The fleet view lists every shipment, with its milestones, status, and who holds the baton.
+2:24.71  The document vault links fields across all three documents, with a SHA-256 chain of custody.
+2:32.15  The marketplace re-ranks forwarder bids live as priorities change.
+2:37.01  Financials shows demurrage exposure, and the escrow pipeline where each payout waits for its proof.
+2:43.51  And sustainability tracks carbon per leg, with greener modes and a CBAM statement.
+2:48.90  Documents, payments, disruptions, and carbon. All on one shipment record.
+2:55.00  One Shipment, One Digital Platform. Thank you, from Team Outliers.
