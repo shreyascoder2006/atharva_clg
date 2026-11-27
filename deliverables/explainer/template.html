@@ -1,0 +1,658 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>One Shipment Explainer</title>
+<style>
+/*FONTS*/
+:root{--bg:#F3EDE3;--ink:#2B231D;--mut:#8A7D70;--line:#E4D9C8;--card:#FFFDF9;--clay:#A9552F;--sage:#637A5B;--ochre:#B9822F;--mocha:#8A7360;--sand:#E9E0D2;--hl:rgba(169,85,47,.2)}
+*{box-sizing:border-box}
+html,body{margin:0;background:#191512;overflow:hidden}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;background:var(--bg);font-family:Inter,sans-serif;color:var(--ink);transform-origin:0 0}
+.layer{position:absolute;inset:0;display:none}
+.cam{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+.abs{position:absolute;white-space:nowrap}
+.card{position:absolute;background:var(--card);border:1px solid var(--line);border-radius:18px;box-shadow:0 10px 30px rgba(60,40,20,.08)}
+.serif{font-family:Fraunces,serif}
+.mono{font-family:'JetBrains Mono',monospace}
+.title{left:960px;top:540px;transform:translate(-50%,-50%);font:500 30px Fraunces;letter-spacing:-.01em}
+.w{display:inline-block;position:relative;isolation:isolate}
+.hl{position:absolute;left:-5px;right:-5px;top:10%;bottom:4%;background:var(--hl);border-radius:5px;transform-origin:0 50%;z-index:-1}
+.ic{display:inline-flex;align-items:center;justify-content:center}
+.ic svg{width:100%;height:100%}
+.pill{position:absolute;border-radius:999px;display:flex;align-items:center;justify-content:center;white-space:nowrap;font-weight:600}
+.btn{position:absolute;border-radius:12px;background:var(--clay);color:#fff;font-weight:600;font-size:17px;display:flex;align-items:center;justify-content:center;gap:10px;white-space:nowrap}
+.lbl{font-size:12px;font-weight:600;letter-spacing:.12em;text-transform:uppercase;color:var(--mut)}
+#cursor{position:absolute;left:0;top:0;width:30px;height:30px;z-index:50;pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.25))}
+#ui{position:fixed;left:0;right:0;bottom:0;height:56px;background:#221c18;display:flex;align-items:center;gap:14px;padding:0 16px;color:#eee;font:13px Inter}
+#ui button{background:#A9552F;color:#fff;border:0;border-radius:8px;padding:8px 14px;font:600 13px Inter;cursor:pointer}
+#ui input{flex:1}
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<div id="ui"><button id="pp">Play</button><input id="scrub" type="range" min="0" max="1000" value="0"><span id="tc">0.0 s</span></div>
+<script>
+/* BEAT SHEET (seconds · what happens · sound)
+ 0.0  Introducing fades up                                   · soft pad enters
+ 2.0  Brand moment: silk gradient + "One Shipment, One Digital Platform" · pad swell
+ 5.0  Title: One export. Four parties. No shared record.     · whoosh on push
+ 9.5  UI: export group chat fills with conflicting weights   · bubble pops, light percussion enters
+14.5  Title: So we put one record at the centre.             · whoosh
+17.5  UI: hub diagram from the deck builds (roles, capabilities) · ticks per node
+24.0  Title: Catch the mismatch before customs does.         · whoosh
+27.0  UI: AI X-Ray scan, 12,400 vs 12,850 kg, resolve, SHA-256 · clicks, scan ticks, success chime
+36.0  Title: Payment moves the moment proof does.            · whoosh
+39.0  UI: driver confirms gate-in, Rs 18,500 released, baton to CHA · click, chime
+47.0  Title: Disrupted? Every option, priced in seconds.     · whoosh
+50.0  UI: Red Sea Co-Pilot, two options, execute, Cape reroute · clicks, chime
+58.5  Title: Seven workspaces. One truth.                    · whoosh
+61.5  UI: role-aware Shipments workspace, rows fill, roles switch · clicks
+68.0  Proof: 43 systems, 129 APIs already on ULIP (count-up)  · lift begins
+73.0  Integrations: tiles float in with parallax             · shimmer
+79.0  Closer: Run your [documents/payments/disruptions/carbon] on one shipment record · lift
+85.0  End card                                                · chime
+*/
+const VIDEO = { w: 1920, h: 1080, duration: 89 };
+window.VIDEO = VIDEO;
+const ICONS = /*ICONS*/;
+const HASH = '/*HASH*/';
+
+function spring(t, w = 14, z = 0.82) { if (t <= 0) return 0; if (z >= 1) return 1 - Math.exp(-w * t) * (1 + w * t); const wd = w * Math.sqrt(1 - z * z); return 1 - Math.exp(-z * w * t) * (Math.cos(wd * t) + (z * w / wd) * Math.sin(wd * t)); }
+const track = (v0, keys) => t => { let v = v0, p = v0; for (const [tk, val, w, z] of keys) { v += (val - p) * spring(t - tk, w, z); p = val; } return v; };
+const kf = keys => t => { if (t <= keys[0][0]) return keys[0][1]; for (let i = 1; i < keys.length; i++) { const [a, va] = keys[i - 1], [b, vb, e = ease] = keys[i]; if (t <= b) return lerp(va, vb, e((t - a) / (b - a))); } return keys[keys.length - 1][1]; };
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const ease = x => (x = clamp(x), x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const lerp = (a, b, k) => a + (b - a) * k;
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const rng = s => () => (s = (s + 0x6D2B79F5) | 0, s = Math.imul(s ^ (s >>> 15), 1 | s), s ^= s + Math.imul(s ^ (s >>> 7), 61 | s), ((s ^ (s >>> 14)) >>> 0) / 4294967296);
+const outBack = x => { x = clamp(x); const c = 1.4; return 1 + (c + 1) * Math.pow(x - 1, 3) + c * Math.pow(x - 1, 2); };
+const easeOut = x => 1 - Math.pow(1 - clamp(x), 3);
+const fmt = n => Math.round(n).toLocaleString('en-US');
+const fmtIN = n => Math.round(n).toLocaleString('en-IN');
+
+const stage = document.getElementById('stage');
+const $ = h => { const d = document.createElement('div'); d.innerHTML = h.trim(); return d.firstElementChild; };
+const ic = (name, size, color) => `<span class="ic" style="width:${size}px;height:${size}px;color:${color || 'currentColor'}">${ICONS[name]}</span>`;
+const scenes = [];
+function layer(z = 1) { const L = $('<div class="layer"><div class="cam"></div></div>'); L.style.zIndex = z; stage.appendChild(L); return { L, cam: L.firstElementChild }; }
+function setCam(cam, fx, fy, k) { cam.style.transform = `translate(${(960 - fx * k).toFixed(2)}px,${(540 - fy * k).toFixed(2)}px) scale(${k.toFixed(4)})`; }
+function show(L, t, s, e, fi = 0.45, fo = 0.45) {
+  const v = Math.min(fi > 0 ? seg(t, s, s + fi) : (t >= s ? 1 : 0), fo > 0 ? 1 - seg(t, e - fo, e) : (t < e ? 1 : 0));
+  if (v <= 0.001) { L.style.display = 'none'; return 0; }
+  L.style.display = 'block'; L.style.opacity = v.toFixed(3);
+  const b = (1 - v) * 9; L.style.filter = b > 0.3 ? `blur(${b.toFixed(1)}px)` : 'none';
+  return v;
+}
+const camKeys = keys => { const fx = kf(keys.map(k => [k[0], k[1], k[4]])), fy = kf(keys.map(k => [k[0], k[2], k[4]])), kk = kf(keys.map(k => [k[0], k[3], k[4]])); return t => [fx(t), fy(t), kk(t)]; };
+function el(parent, html, x, y, w, h) { const e = $(html); e.style.left = x + 'px'; e.style.top = y + 'px'; if (w != null) e.style.width = w + 'px'; if (h != null) e.style.height = h + 'px'; parent.appendChild(e); return e; }
+function op(e, v) { e.style.opacity = clamp(v).toFixed(3); }
+function pop(e, v, dy = 14) { op(e, v); e.style.transform = `translateY(${((1 - v) * dy).toFixed(1)}px)`; }
+
+// ---------- cursor (screen space) ----------
+const cursor = $(`<svg id="cursor" viewBox="0 0 24 24"><path d="M4 2 L4 19 L8.5 15 L11.5 22 L14.5 20.7 L11.6 14 L18 14 Z" fill="#fff" stroke="#111" stroke-width="1.4" stroke-linejoin="round"/></svg>`);
+stage.appendChild(cursor);
+const cursorPaths = []; // {s,e, pts:[[t,x,y]] (ui coords), cam: fn, clicks:[t]}
+function cursorTrack(s, e, keys, camFn, clicks = []) { cursorPaths.push({ s, e, keys, camFn, clicks }); }
+function updateCursor(t) {
+  const p = cursorPaths.find(c => t >= c.s && t <= c.e);
+  if (!p) { cursor.style.display = 'none'; return; }
+  const fx = kf(p.keys.map(k => [k[0], k[1]])), fy = kf(p.keys.map(k => [k[0], k[2]]));
+  const [cx, cy, k] = p.camFn(t);
+  const ux = fx(t), uy = fy(t);
+  const sx = 960 + (ux - cx) * k, sy = 540 + (uy - cy) * k;
+  let press = 0; for (const c of p.clicks) { const d = t - c; if (d > -0.08 && d < 0.18) press = Math.max(press, 1 - Math.abs(d - 0.03) / 0.15); }
+  const vis = Math.min(seg(t, p.s, p.s + 0.25), 1 - seg(t, p.e - 0.25, p.e));
+  cursor.style.display = vis > 0 ? 'block' : 'none';
+  cursor.style.opacity = vis;
+  cursor.style.transform = `translate(${(sx - 4).toFixed(1)}px,${(sy - 2).toFixed(1)}px) scale(${(1.15 - press * 0.15).toFixed(3)})`;
+}
+// ripple inside a cam at ui coords
+function ripple(parent, x, y, at) {
+  const r = el(parent, `<div class="abs" style="border-radius:50%;border:3px solid var(--clay);pointer-events:none"></div>`, x, y, 0, 0);
+  return t => { const d = t - at; if (d < 0 || d > 0.6) { r.style.display = 'none'; return; } r.style.display = 'block'; const R = 10 + d * 110; r.style.width = r.style.height = 2 * R + 'px'; r.style.left = x - R + 'px'; r.style.top = y - R + 'px'; r.style.opacity = (1 - d / 0.6) * 0.8; };
+}
+
+// ---------- silk gradient canvas (drawn once) ----------
+function silkCanvas() {
+  const c = document.createElement('canvas'); c.width = 2400; c.height = 1350; const g = c.getContext('2d');
+  g.fillStyle = '#F8F2E9'; g.fillRect(0, 0, c.width, c.height);
+  const R = rng(7);
+  const bands = [['rgba(169,85,47,0.16)', 380], ['rgba(255,255,255,0.85)', 320], ['rgba(214,150,96,0.16)', 360], ['rgba(255,252,246,0.9)', 300], ['rgba(169,85,47,0.10)', 300], ['rgba(255,255,255,0.8)', 340]];
+  g.filter = 'blur(70px)';
+  bands.forEach(([col, w], i) => {
+    g.save(); g.translate(c.width * (0.15 + i * 0.15 + R() * 0.05), c.height / 2); g.rotate(-0.55 + R() * 0.12);
+    const clear = col.replace(/[\d.]+\)$/, '0)'); const lg = g.createLinearGradient(-w, 0, w, 0); lg.addColorStop(0, clear); lg.addColorStop(0.5, col); lg.addColorStop(1, clear);
+    g.fillStyle = lg; g.fillRect(-w, -1400, 2 * w, 2800); g.restore();
+  });
+  g.filter = 'none';
+  c.style.position = 'absolute'; c.style.left = '-240px'; c.style.top = '-135px';
+  return c;
+}
+function dotsCanvas() {
+  const c = document.createElement('canvas'); c.width = 1920; c.height = 1080; const g = c.getContext('2d');
+  for (let x = 24; x < 1920; x += 32) for (let y = 24; y < 1080; y += 32) {
+    const dx = (x - 960) / 960, dy = (y - 540) / 540, d = Math.sqrt(dx * dx + dy * dy);
+    g.fillStyle = `rgba(138,115,96,${Math.max(0, 0.32 - d * 0.22).toFixed(3)})`; g.beginPath(); g.arc(x, y, 1.6, 0, 7); g.fill();
+  }
+  c.style.position = 'absolute'; c.style.left = '0'; c.style.top = '0';
+  return c;
+}
+
+// ---------- title scene ----------
+function titleScene(s, e, words, hi, o = {}) {
+  const { L, cam } = layer(5);
+  const line = el(cam, `<div class="abs title"></div>`, 960, 540);
+  const spans = [], groups = [];
+  const word = (parent, w) => { const sp = document.createElement('span'); sp.style.display = 'inline-block'; sp.textContent = w; parent.appendChild(sp); spans.push(sp); };
+  let i = 0;
+  while (i < words.length) {
+    if (hi.includes(i)) {
+      // one continuous highlight behind a run of highlighted words
+      const g = document.createElement('span'); g.className = 'w'; g.innerHTML = '<i class="hl"></i>';
+      const inner = document.createElement('span'); g.appendChild(inner);
+      while (i < words.length && hi.includes(i)) { word(inner, words[i]); if (hi.includes(i + 1)) inner.appendChild(document.createTextNode(' ')); i++; }
+      line.appendChild(g); groups.push(g);
+    } else { word(line, words[i]); i++; }
+    if (i < words.length) line.appendChild(document.createTextNode(' '));
+  }
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.35, 0.4)) return;
+    const K = 0.72 * 1920 / Math.max(1, line.offsetWidth);
+    setCam(cam, 960, 540, kf([[s + 0.2, 1], [s + 1.45, K], [e, K * 1.05, x => x]])(t));
+    spans.forEach((sp, j) => { const v = easeOut(seg(t, s + 0.1 + j * 0.07, s + 0.45 + j * 0.07)); sp.style.opacity = v; sp.style.transform = `translateY(${(1 - v) * 10}px)`; });
+    const p = seg(t, s + 1.45, s + 2.05);
+    groups.forEach((g, j) => { g.querySelector('.hl').style.transform = `scaleX(${ease(clamp(p * groups.length - j)).toFixed(3)})`; });
+  } });
+}
+
+// =====================================================================
+// 0. Open
+// =====================================================================
+{
+  const { L, cam } = layer(2);
+  const intro = el(cam, `<div class="abs" style="font:400 30px Inter;color:var(--mut);transform:translate(-50%,-50%)">Introducing</div>`, 960, 540);
+  scenes.push({ s: 0, e: 2.4, update(t) { if (!show(L, t, 0, 2.4, 0.6, 0.45)) return; setCam(cam, 960, 540, lerp(1, 1.08, seg(t, 0, 2.4))); } });
+  void intro;
+}
+function brandScene(s, e, inner) {
+  const { L, cam } = layer(3);
+  const silk = silkCanvas(); L.insertBefore(silk, cam);
+  const box = el(cam, `<div class="abs" style="transform:translate(-50%,-50%);text-align:center">${inner}</div>`, 960, 540);
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.5, 0.45)) return;
+    silk.style.transform = `translate(${(-(t - s) * 22).toFixed(1)}px,${(Math.sin(t * 0.4) * 10).toFixed(1)}px)`;
+    setCam(cam, 960, 540, lerp(0.97, 1.02, ease(seg(t, s, e))));
+    op(box, seg(t, s + 0.3, s + 0.9));
+  } });
+}
+brandScene(2.0, 5.2, `<div style="font:500 80px Fraunces;letter-spacing:-.02em;line-height:1.05">One Shipment,<br><i style="color:var(--clay)">One Digital Platform</i></div><div style="margin-top:22px;font:500 19px Inter;color:var(--mut);letter-spacing:.14em">LOGITHON 2026 · TEAM OUTLIERS</div>`);
+
+// =====================================================================
+// 1. Problem title + chat chaos
+// =====================================================================
+titleScene(5.0, 9.6, ['One', 'export.', 'Four', 'parties.', 'No', 'shared', 'record.'], [4, 5, 6]);
+{
+  const s = 9.5, e = 14.6;
+  const { L, cam } = layer(4);
+  const win = el(cam, `<div class="card" style="border-radius:26px"></div>`, 560, 120, 800, 1000);
+  el(win, `<div class="abs" style="left:28px;top:24px;display:flex;align-items:center;gap:14px">${ic('MessagesSquare', 30, '#8A7360')}<div><div style="font:600 21px Inter">SHP-0482 · Export group</div><div style="font:400 15px Inter;color:var(--mut)">Exporter, Forwarder, Customs Broker, Transporter</div></div></div>`, 0, 0);
+  el(win, `<div class="abs" style="left:0;right:0;top:92px;height:1px;background:var(--line)"></div>`, 0, 92, 800, 1);
+  const msgs = [
+    ['Forwarder', 'var(--mocha)', 'Need the final <b>gross weight</b> for the BL draft.', 0],
+    ['Exporter', 'var(--clay)', 'Invoice says <b>12,400 kg</b>.', 1],
+    ['Customs Broker', 'var(--sage)', 'Packing list says <b>12,850 kg</b>. Which one do I file?', 0],
+    ['Transporter', 'var(--ochre)', 'At JNPT Gate 4. Sending the photo…', 1],
+    ['Forwarder', 'var(--mocha)', 'Vessel cutoff is in <b>6 hours</b>.', 0],
+    ['Exporter', 'var(--clay)', 'Calling everyone now.', 1],
+  ];
+  const bubbles = msgs.map(([who, col, text, right], i) => {
+    const b = el(win, `<div class="abs" style="max-width:520px;white-space:normal"><div style="font:600 14px Inter;color:${col};margin:0 0 6px ${right ? 'auto' : '0'};text-align:${right ? 'right' : 'left'}">${who}</div><div style="background:${right ? '#F7EFE6' : '#fff'};border:1px solid var(--line);border-radius:18px;padding:14px 20px;font:400 21px Inter;line-height:1.35">${text}</div></div>`, right ? 250 : 30, 120 + i * 128, 520);
+    return b;
+  });
+  const stamp = el(win, `<div class="abs" style="left:240px;top:910px;transform-origin:50% 50%;border:3px solid #B3372B;color:#B3372B;border-radius:12px;padding:10px 22px;font:700 24px Inter;letter-spacing:.04em">MISSED CUTOFF · ROLLED +96 h</div>`, 210, 905);
+  const camF = camKeys([[s, 960, 420, 1.25], [s + 3.0, 960, 720, 1.12], [e, 960, 760, 1.0]]);
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    const [x, y, k] = camF(t); setCam(cam, x, y, k);
+    bubbles.forEach((b, i) => pop(b, easeOut(seg(t, s + 0.35 + i * 0.55, s + 0.65 + i * 0.55)), 22));
+    const sv = seg(t, s + 3.9, s + 4.15); op(stamp, sv); stamp.style.transform = `rotate(-4deg) scale(${lerp(1.5, 1, outBack(sv))})`;
+  } });
+}
+
+// =====================================================================
+// 2. Hub (from the deck)
+// =====================================================================
+titleScene(14.5, 17.6, ['So', 'we', 'put', 'one', 'record', 'at', 'the', 'centre.'], [3, 4]);
+{
+  const s = 17.5, e = 24.1;
+  const { L, cam } = layer(4);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg'); svg.setAttribute('width', 1920); svg.setAttribute('height', 1080); svg.style.position = 'absolute'; cam.appendChild(svg);
+  const ring = (r, dash) => { const c = document.createElementNS(svgNS, 'ellipse'); c.setAttribute('cx', 960); c.setAttribute('cy', 540); c.setAttribute('rx', r[0]); c.setAttribute('ry', r[1]); c.setAttribute('fill', 'none'); c.setAttribute('stroke', '#B8A690'); c.setAttribute('stroke-width', 2); c.setAttribute('stroke-dasharray', dash); svg.appendChild(c); return c; };
+  const r1 = ring([330, 330], '6 8'), r2 = ring([640, 410], '6 8');
+  const roles = [['Exporter', '#A9552F', 'Factory', -135], ['Freight Forwarder', '#8A7360', 'Ship', -45], ['Customs Broker', '#637A5B', 'Stamp', 45], ['Transporter', '#B9822F', 'Truck', 135]];
+  const caps = [['AI Document X-Ray', 'ScanLine', -90], ['Proof escrow', 'LockOpen', -30], ['ULIP events', 'Network', 30], ['Recovery Co-Pilot', 'Sparkles', 90], ['Partner marketplace', 'Handshake', 150], ['CO2e + CBAM', 'Leaf', 210]];
+  const lines = roles.map(([, col, , a]) => { const l = document.createElementNS(svgNS, 'line'); const x = 960 + 330 * Math.cos(a * Math.PI / 180), y = 540 + 330 * Math.sin(a * Math.PI / 180); l.setAttribute('x1', 960); l.setAttribute('y1', 540); l.setAttribute('x2', x); l.setAttribute('y2', y); l.setAttribute('stroke', col); l.setAttribute('stroke-width', 5); l.setAttribute('stroke-linecap', 'round'); l.setAttribute('stroke-dasharray', 330); svg.appendChild(l); return l; });
+  const capLines = caps.map(([, , a]) => { const l = document.createElementNS(svgNS, 'line'); const x = 960 + 640 * Math.cos(a * Math.PI / 180), y = 540 + 410 * Math.sin(a * Math.PI / 180); l.setAttribute('x1', 960); l.setAttribute('y1', 540); l.setAttribute('x2', x); l.setAttribute('y2', y); l.setAttribute('stroke', '#D8CBB6'); l.setAttribute('stroke-width', 2); svg.appendChild(l); return l; });
+  const pulses = roles.map(([, col]) => { const c = document.createElementNS(svgNS, 'circle'); c.setAttribute('r', 7); c.setAttribute('fill', col); svg.appendChild(c); return c; });
+  const glow = el(cam, `<div class="abs" style="border-radius:50%;background:rgba(169,85,47,.16);transform:translate(-50%,-50%)"></div>`, 960, 540, 330, 330);
+  const hub = el(cam, `<div class="abs" style="border-radius:50%;background:var(--ink);transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;box-shadow:0 18px 40px rgba(43,35,29,.3)">${ic('Package', 52, '#FFFDF9')}<div style="margin-top:12px;font:700 19px Inter;letter-spacing:.12em;text-align:center;line-height:1.3">ONE SHIPMENT<br>RECORD</div><div style="margin-top:8px;font:400 14px Inter;color:#C9BBA8">16 milestones · 8 docs · 4 payouts</div></div>`, 960, 540, 280, 280);
+  const roleEls = roles.map(([n, col, i, a]) => { const x = 960 + 330 * Math.cos(a * Math.PI / 180), y = 540 + 330 * Math.sin(a * Math.PI / 180); return el(cam, `<div class="abs" style="transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center"><div style="width:108px;height:108px;border-radius:50%;background:${col};border:5px solid #FFFDF9;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(43,35,29,.2)">${ic(i, 48, '#fff')}</div><div style="margin-top:10px;background:#FFFDF9;border:2px solid ${col};border-radius:999px;padding:6px 16px;font:600 17px Inter">${n}</div></div>`, x, y + 22); });
+  const capEls = caps.map(([n, i, a]) => { const x = 960 + 640 * Math.cos(a * Math.PI / 180), y = 540 + 410 * Math.sin(a * Math.PI / 180); return el(cam, `<div class="card" style="transform:translate(-50%,-50%);display:flex;align-items:center;gap:14px;padding:14px 22px 14px 14px;border-radius:16px"><div style="width:52px;height:52px;border-radius:50%;background:var(--clay);display:flex;align-items:center;justify-content:center">${ic(i, 26, '#fff')}</div><div style="font:600 19px Inter;white-space:nowrap">${n.replace('CO2e', 'CO<sub>2</sub>e')}</div></div>`, x, y); });
+  const camF = camKeys([[s, 960, 540, 1.9], [s + 1.2, 960, 540, 1.7], [s + 3.4, 960, 540, 0.98], [e, 960, 540, 0.94, x => x]]);
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    const [x, y, k] = camF(t); setCam(cam, x, y, k);
+    const hv = spring(t - s - 0.15, 12, 0.7); hub.style.transform = `translate(-50%,-50%) scale(${hv.toFixed(3)})`;
+    glow.style.transform = `translate(-50%,-50%) scale(${(hv * (1 + 0.05 * Math.sin(t * 3))).toFixed(3)})`;
+    r1.style.opacity = seg(t, s + 0.6, s + 1.2); r2.style.opacity = seg(t, s + 2.4, s + 3.0);
+    lines.forEach((l, i) => l.setAttribute('stroke-dashoffset', (330 * (1 - ease(seg(t, s + 0.8 + i * 0.18, s + 1.4 + i * 0.18)))).toFixed(1)));
+    roleEls.forEach((r, i) => { const v = spring(t - s - 1.2 - i * 0.18, 13, 0.72); r.style.opacity = clamp(v * 3); r.style.transform = `translate(-50%,-50%) scale(${Math.max(0, v).toFixed(3)})`; });
+    capLines.forEach((l, i) => l.style.opacity = seg(t, s + 2.6 + i * 0.2, s + 3.0 + i * 0.2));
+    capEls.forEach((c, i) => { const v = easeOut(seg(t, s + 2.7 + i * 0.2, s + 3.2 + i * 0.2)); c.style.opacity = v; c.style.transform = `translate(-50%,-50%) scale(${lerp(0.85, 1, v).toFixed(3)})`; });
+    pulses.forEach((p, i) => { const a = roles[i][3] * Math.PI / 180, ph = ((t * 0.7 + i * 0.25) % 1), on = seg(t, s + 2.0, s + 2.4); const rr = 330 * (1 - ph); p.setAttribute('cx', 960 + rr * Math.cos(a)); p.setAttribute('cy', 540 + rr * Math.sin(a)); p.style.opacity = on * Math.sin(ph * Math.PI); });
+  } });
+}
+
+// =====================================================================
+// 3. X-Ray
+// =====================================================================
+titleScene(24.0, 27.1, ['Catch', 'the', 'mismatch', 'before', 'customs', 'does.'], [3, 4]);
+const xr = {};
+{
+  const s = 27.0, e = 36.1;
+  const { L, cam } = layer(4);
+  const M = el(cam, `<div class="card" style="border-radius:24px"></div>`, 210, 160, 1500, 760);
+  el(M, `<div class="abs" style="display:flex;align-items:center;gap:16px"><div style="width:54px;height:54px;border-radius:14px;background:var(--clay);display:flex;align-items:center;justify-content:center">${ic('FileText', 28, '#fff')}</div><div><div style="font:600 25px Inter">AI Document X-Ray</div><div style="font:400 16px Inter;color:var(--mut)">SHP-2611-0482 · Commercial Invoice, Packing List, e-Bill of Lading</div></div></div>`, 34, 26);
+  const scanBtn = el(M, `<div class="abs" style="display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);border-radius:12px;padding:12px 18px;font:600 17px Inter;background:#fff">${ic('ScanLine', 22, '#A9552F')} Run AI Verification Scan</div>`, 1120, 30);
+  const badge = el(M, `<div class="abs pill" style="position:absolute;height:34px;padding:0 14px;font-size:14px;background:#F6E1DA;color:#B3372B">1 discrepancy</div>`, 1380, 98);
+  const cols = [['COMMERCIAL INVOICE', 'DPC/EXP/26-27/0482', 'Deccan Precision Components', '#A9552F', '12,400 kg'], ['PACKING LIST', 'PL-0482', 'Deccan Precision Components', '#8A7360', '12,850 kg'], ['E-BILL OF LADING', 'KMOL-047W-0482', 'Arabian Gateway Logistics (as agent)', '#637A5B', '12,850 kg']];
+  const fields = ['Consignee', 'HS code', 'Gross weight', 'Container'];
+  const vals = ['Rhein-Ruhr Antriebstechnik GmbH', '8708.40', null, 'OSPU 482190 8'];
+  xr.fieldEls = []; xr.checks = []; xr.gw = [];
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg'); svg.setAttribute('width', 1500); svg.setAttribute('height', 760); svg.style.position = 'absolute'; svg.style.left = '0'; svg.style.top = '0'; M.appendChild(svg);
+  cols.forEach(([kind, num, who, col, gw], c) => {
+    const x = 40 + c * 490;
+    el(M, `<div class="abs" style="height:5px;border-radius:3px;background:${col}"></div>`, x, 150, 430, 5);
+    el(M, `<div class="abs"><div style="font:700 14px Inter;letter-spacing:.14em;color:${col}">${kind}</div><div class="mono" style="font-size:20px;margin-top:6px">${num}</div><div style="font:400 15px Inter;color:var(--mut);margin-top:4px">${who}</div></div>`, x, 172);
+    fields.forEach((f, r) => {
+      const y = 280 + r * 92;
+      const fe = el(M, `<div class="abs" style="border:1.5px solid var(--line);border-radius:12px;background:#FCF9F4;padding:10px 16px;width:430px"><div class="lbl" style="font-size:11px">${f}</div><div style="font:500 19px Inter;margin-top:4px">${vals[r] ?? gw}</div></div>`, x, y, 430);
+      const ck = el(M, `<div class="abs">${ic('CircleCheck', 26, '#637A5B')}</div>`, x + 392, y + 22);
+      xr.fieldEls.push({ fe, c, r }); xr.checks.push({ ck, c, r, x: x + 392 });
+      if (r === 2) xr.gw.push(fe);
+    });
+  });
+  // connectors between columns, per row
+  xr.conn = [];
+  for (let c = 0; c < 2; c++) for (let r = 0; r < 4; r++) {
+    const p = document.createElementNS(svgNS, 'path'); const x1 = 40 + c * 490 + 430, x2 = 40 + (c + 1) * 490, y = 280 + r * 92 + 36;
+    p.setAttribute('d', `M${x1} ${y} C${x1 + 30} ${y} ${x2 - 30} ${y} ${x2} ${y}`); p.setAttribute('stroke', '#637A5B'); p.setAttribute('stroke-width', 3); p.setAttribute('fill', 'none'); svg.appendChild(p); xr.conn.push({ p, c, r });
+  }
+  const beam = el(M, `<div class="abs" style="background:linear-gradient(90deg,rgba(169,85,47,0),rgba(169,85,47,.22),rgba(169,85,47,0));top:140px;height:540px"></div>`, 0, 140, 160, 540);
+  const foot = el(M, `<div class="abs" style="left:0;right:0;border-top:1px solid var(--line);background:#FAF5EE;border-radius:0 0 24px 24px"></div>`, 0, 650, 1500, 110);
+  const note = el(M, `<div class="abs" style="display:flex;gap:16px;align-items:flex-start;white-space:normal;width:1100px"><div style="width:44px;height:44px;border-radius:12px;background:#F6E1DA;display:flex;align-items:center;justify-content:center;flex:none">${ic('Sparkles', 24, '#B3372B')}</div><div><div style="font:600 19px Inter">Gross weight mismatch: <span style="color:#B3372B">12,400 kg (CI) vs 12,850 kg (PL, e-BL)</span> · 97% confidence</div><div style="font:400 16px Inter;color:var(--mut);margin-top:6px">Packing List (36 pallets × 34.2 kg tare) and the JNPT weighbridge VGM (12,846 kg) agree on 12,850 kg. Amend the invoice; value, HS code and Incoterm unchanged.</div></div></div>`, 34, 668);
+  const resolve = el(M, `<div class="btn" style="width:280px;height:52px">${ic('Sparkles', 20, '#fff')} Resolve with AI &amp; Re-Sync</div>`, 1180, 676, 280, 52);
+  const hashEl = el(M, `<div class="abs mono" style="font-size:15px;color:#637A5B"></div>`, 1020, 255);
+  const toast = el(cam, `<div class="card" style="display:flex;align-items:center;gap:14px;padding:16px 22px;border-radius:16px;border-color:#637A5B">${ic('CircleCheck', 28, '#637A5B')}<div><div style="font:600 18px Inter">CHA payout unblocked</div><div style="font:400 15px Inter;color:var(--mut)">Baton passes to the Customs Broker · comms updated</div></div></div>`, 1240, 90);
+  const camF = camKeys([[s, 720, 250, 1.35], [s + 0.9, 1450, 215, 1.65], [s + 1.75, 1450, 215, 1.65], [s + 2.2, 960, 520, 1.02], [s + 3.1, 960, 520, 1.02], [s + 3.8, 990, 570, 1.75], [s + 4.4, 990, 570, 1.75], [s + 4.9, 1090, 800, 1.38], [s + 5.95, 1090, 800, 1.38], [s + 6.35, 760, 560, 1.6], [s + 7.0, 960, 520, 1.0], [e, 960, 510, 0.97, x => x]]);
+  xr.camF = camF;
+  const r1 = ripple(M, 1272, 54, s + 1.6), r2 = ripple(M, 1320, 702, s + 5.8);
+  cursorTrack(s + 0.5, s + 6.3, [[s + 0.5, 1250, 330], [s + 1.5, 1482, 214], [s + 2.6, 1470, 240], [s + 4.4, 1300, 860], [s + 5.7, 1530, 862], [s + 6.3, 1540, 900]], camF, [s + 1.6, s + 5.8]);
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    const [x, y, k] = camF(t); setCam(cam, x, y, k);
+    r1(t); r2(t);
+    scanBtn.style.background = t > s + 1.6 && t < s + 3.1 ? '#F7EFE6' : '#fff';
+    const bx = lerp(-160, 1500, ease(seg(t, s + 1.7, s + 3.1))); beam.style.left = bx + 'px'; beam.style.display = t > s + 1.7 && t < s + 3.15 ? 'block' : 'none';
+    const resolved = t > s + 6.0;
+    xr.checks.forEach(({ ck, r, x: cx }) => { const passed = t > s + 1.7 + (cx + 80) / 1660 * 1.4; const bad = r === 2; ck.style.opacity = passed && (!bad || resolved) ? (bad ? seg(t, s + 6.2, s + 6.5) : 1) : 0; });
+    const badOn = seg(t, s + 2.9, s + 3.1) * (resolved ? 1 - seg(t, s + 6.0, s + 6.3) : 1);
+    xr.gw.forEach((fe, i) => { if (i < 2) { fe.style.borderColor = badOn > 0.5 ? '#C8553D' : (resolved && t > s + 6.2 ? '#637A5B' : '#E4D9C8'); fe.style.background = badOn > 0.5 ? '#FBEAE4' : '#FCF9F4'; } });
+    xr.conn.forEach(({ p, c, r }) => { const bad = r === 2 && c === 0; p.setAttribute('stroke', bad && badOn > 0.5 ? '#C8553D' : '#637A5B'); p.style.opacity = seg(t, s + 1.9 + c * 0.5, s + 2.3 + c * 0.5); p.setAttribute('stroke-width', bad && badOn > 0.5 ? 4 : 3); });
+    // invoice gross weight value morph
+    const gv = xr.gw[0].lastElementChild; const mv = seg(t, s + 6.05, s + 6.6); gv.textContent = mv > 0 ? fmt(lerp(12400, 12850, ease(mv))) + ' kg' : '12,400 kg'; gv.style.color = mv >= 1 ? '#637A5B' : (badOn > 0.5 ? '#B3372B' : '#2B231D');
+    xr.gw[1].lastElementChild.style.color = badOn > 0.5 ? '#B3372B' : '#2B231D';
+    op(badge, seg(t, s + 3.0, s + 3.2) * (1 - seg(t, s + 6.0, s + 6.2)));
+    pop(note, seg(t, s + 4.0, s + 4.4) * (1 - seg(t, s + 6.4, s + 6.6)), 10); pop(resolve, seg(t, s + 4.2, s + 4.6) * (1 - seg(t, s + 6.4, s + 6.6)), 10);
+    resolve.style.filter = t > s + 5.75 && t < s + 6.0 ? 'brightness(0.9)' : 'none';
+    const n = Math.floor(seg(t, s + 6.8, s + 7.8) * (HASH.length + 9)); hashEl.textContent = n > 0 ? ('SHA-256  ' + HASH).slice(0, n) : '';
+    pop(toast, seg(t, s + 7.2, s + 7.6), -12);
+  } });
+}
+
+// =====================================================================
+// 4. Proof releases payment
+// =====================================================================
+titleScene(36.0, 39.1, ['Payment', 'moves', 'the', 'moment', 'proof', 'does.'], [4]);
+{
+  const s = 39.0, e = 47.1;
+  const { L, cam } = layer(4);
+  const phone = el(cam, `<div class="abs" style="border-radius:54px;background:#221B16;box-shadow:0 30px 60px rgba(43,35,29,.28)"></div>`, 250, 140, 400, 800);
+  const scr = el(phone, `<div class="abs" style="border-radius:42px;background:#FBF7F1;overflow:hidden"></div>`, 14, 14, 372, 772);
+  el(scr, `<div class="abs" style="left:0;right:0;padding:0 24px"><div style="font:600 13px Inter;letter-spacing:.14em;color:var(--mut)">DRIVER DESK</div><div style="font:600 24px Inter;margin-top:6px">MH12 TX 4471</div><div style="font:400 15px Inter;color:var(--mut)">Sahyadri Roadlines · Chakan to JNPT</div></div>`, 0, 56, 372);
+  el(scr, `<div class="abs" style="border-radius:20px;background:#fff;border:1px solid var(--line);padding:18px;width:324px;white-space:normal"><div style="display:flex;align-items:center;gap:12px">${ic('MapPin', 28, '#A9552F')}<div><div style="font:600 19px Inter">Arrived at JNPT</div><div style="font:400 15px Inter;color:var(--mut)">Gate 4 · Nhava Sheva</div></div></div><div style="margin-top:16px;height:150px;border-radius:14px;background:repeating-linear-gradient(135deg,#EFE6D9 0 14px,#F6EFE5 14px 28px);display:flex;align-items:center;justify-content:center">${ic('Truck', 54, '#8A7360')}</div></div>`, 24, 190);
+  const pbtn = el(scr, `<div class="btn" style="border-radius:16px;font-size:16px;white-space:normal;text-align:center;line-height:1.25;padding:0 18px"></div>`, 24, 470, 324, 74);
+  const pdone = el(scr, `<div class="abs" style="border-radius:16px;background:#EAF0E6;border:1.5px solid #637A5B;padding:14px 16px;width:324px;white-space:normal"><div style="display:flex;gap:10px;align-items:center;font:600 18px Inter;color:#3F5538">${ic('CircleCheck', 24, '#637A5B')} Gate-in confirmed</div><div style="font:400 14px Inter;color:var(--mut);margin-top:6px">Port Gate event in 29 ms · photo hashed</div></div>`, 24, 566);
+  // pipeline
+  const steps = [['Gate-in proof', '₹18,500', 'Sahyadri Roadlines', 'Transporter'], ['Customs LEO', '₹14,200', 'Nhava Sheva Clearing', 'Customs Broker'], ['Shipped on board', '$2,140', 'Arabian Gateway', 'Freight Forwarder'], ['e-BL surrender', '$186,420', 'Deccan Precision', 'Exporter, via LC']];
+  el(cam, `<div class="abs"><div class="lbl">Milestone escrow · SHP-2611-0482</div><div style="font:600 30px Fraunces;margin-top:8px">Each payout waits for its proof</div></div>`, 760, 210);
+  const baton = el(cam, `<div class="abs pill" style="height:44px;padding:0 20px;font-size:17px;background:#fff;border:1.5px solid var(--line);gap:10px"></div>`, 1400, 222);
+  const stepEls = steps.map(([h, amt, who, role], i) => {
+    const x = 760 + i * 248;
+    const c = el(cam, `<div class="card" style="padding:20px;white-space:normal;border-radius:20px"><div style="display:flex;align-items:center;gap:12px"><div class="lockc" style="width:48px;height:48px;border-radius:50%;background:#8A7360;display:flex;align-items:center;justify-content:center"></div><div><div class="lbl" style="font-size:11px">Step ${i + 1}</div><div style="font:600 18px Inter">${h}</div></div></div><div class="amt serif" style="font-size:38px;font-weight:600;color:var(--clay);margin-top:20px">${amt}</div><div style="font:600 15px Inter;margin-top:8px">${who}</div><div style="font:400 14px Inter;color:var(--mut)">${role}</div><div class="st pill" style="position:relative;margin-top:22px;height:36px;font-size:15px"></div></div>`, x, 320, 220, 330);
+    if (i < 3) el(cam, `<div class="abs">${ic('ArrowRight', 26, '#A9552F')}</div>`, x + 222, 470);
+    return c;
+  });
+  const camF = camKeys([[s, 450, 560, 1.5], [s + 2.6, 450, 600, 1.5], [s + 3.4, 870, 470, 1.6], [s + 5.0, 870, 470, 1.6], [s + 5.8, 1120, 450, 1.08], [s + 6.6, 1000, 540, 0.93], [e, 990, 540, 0.91, x => x]]);
+  const rp = ripple(scr, 186, 507, s + 1.8);
+  cursorTrack(s + 0.5, s + 2.6, [[s + 0.5, 520, 820], [s + 1.7, 470, 650], [s + 2.6, 480, 700]], camF, [s + 1.8]);
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    const [x, y, k] = camF(t); setCam(cam, x, y, k); rp(t);
+    const spin = t > s + 1.9 && t < s + 2.6, done = t >= s + 2.6;
+    pbtn.innerHTML = spin ? `<span style="display:inline-block;width:24px;height:24px;border-radius:50%;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;transform:rotate(${((t * 720) % 360).toFixed(0)}deg)"></span> Uploading photo…` : (done ? `${ic('Check', 22, '#fff')} Arrival confirmed` : `${ic('Camera', 22, '#fff')} Upload Gate-In Photo &amp; Confirm Arrival`);
+    pbtn.style.background = done ? '#637A5B' : (t > s + 1.75 && t < s + 1.95 ? '#8E4626' : '#A9552F');
+    pop(pdone, seg(t, s + 2.7, s + 3.0), 12);
+    const st1 = t < s + 3.8 ? 0 : t < s + 4.6 ? 1 : 2;
+    stepEls.forEach((c, i) => {
+      const state = i === 0 ? st1 : (i === 1 && st1 === 2 ? 3 : 0);
+      const chipEl = c.querySelector('.st'), lock = c.querySelector('.lockc');
+      const conf = [['Locked in escrow', '#EFE6D9', '#6B5D51', 'Lock', '#8A7360'], ['Verified', '#F7E8CD', '#8A5A12', 'BadgeCheck', '#B9822F'], ['Released', '#E3EBDF', '#3F5538', 'LockOpen', '#637A5B'], ['Waiting for LEO', '#F6E9DA', '#A9552F', 'Clock', '#A9552F']][state];
+      chipEl.textContent = conf[0]; chipEl.style.background = conf[1]; chipEl.style.color = conf[2];
+      lock.innerHTML = ic(conf[3], 24, '#fff'); lock.style.background = conf[4];
+      c.style.borderColor = state === 2 ? '#637A5B' : state === 3 ? '#E0B9A2' : 'var(--line)';
+      c.style.transform = i === 0 && t > s + 4.6 ? `scale(${(1 + 0.04 * Math.sin(clamp((t - s - 4.6) / 0.5) * Math.PI)).toFixed(3)})` : 'none';
+      c.style.boxShadow = state === 2 ? `0 0 0 ${(6 * (1 - seg(t, s + 4.6, s + 5.6))).toFixed(1)}px rgba(99,122,91,.25), 0 10px 30px rgba(60,40,20,.08)` : '';
+    });
+    baton.innerHTML = t < s + 5.0 ? `${ic('Truck', 22, '#B9822F')} Baton: Transporter` : `${ic('Stamp', 22, '#637A5B')} Baton: Customs Broker`;
+    baton.style.borderColor = t < s + 5.0 ? 'var(--line)' : '#637A5B';
+  } });
+}
+
+// =====================================================================
+// 5. Co-Pilot
+// =====================================================================
+titleScene(47.0, 50.1, ['Disrupted?', 'Every', 'option,', 'priced', 'in', 'seconds.'], [3, 4, 5]);
+{
+  const s = 50.0, e = 58.6;
+  const { L, cam } = layer(4);
+  // map card
+  const mc = el(cam, `<div class="card" style="border-radius:24px;overflow:hidden"></div>`, 150, 160, 840, 760);
+  el(mc, `<div class="abs lbl">Corridor · JNPT to Rotterdam</div>`, 30, 26);
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg'); svg.setAttribute('width', 840); svg.setAttribute('height', 760); svg.style.position = 'absolute'; mc.appendChild(svg);
+  const blob = (d) => { const p = document.createElementNS(svgNS, 'path'); p.setAttribute('d', d); p.setAttribute('fill', '#EEE5D8'); svg.appendChild(p); };
+  blob('M150 70 C230 40 330 60 400 90 C430 140 400 190 340 205 C300 230 240 225 200 205 C150 190 120 120 150 70 Z'); // Europe
+  blob('M250 270 C330 250 430 260 470 300 C520 360 520 430 480 480 C460 560 430 640 380 700 C340 720 320 690 310 640 C290 560 260 500 240 450 C200 400 200 310 250 270 Z'); // Africa
+  blob('M500 250 C560 240 610 260 630 300 C620 340 590 360 560 360 C530 340 505 300 500 250 Z'); // Arabia
+  blob('M680 230 C720 230 760 250 770 280 C760 330 735 380 715 420 C700 380 680 330 665 290 C660 260 665 240 680 230 Z'); // India
+  const mk = (d, col, w, dash) => { const p = document.createElementNS(svgNS, 'path'); p.setAttribute('d', d); p.setAttribute('stroke', col); p.setAttribute('stroke-width', w); p.setAttribute('fill', 'none'); p.setAttribute('stroke-linecap', 'round'); if (dash) p.setAttribute('stroke-dasharray', dash); svg.appendChild(p); return p; };
+  const suez = mk('M712 330 C650 380 600 400 560 395 C540 340 520 270 470 235 C400 215 300 210 240 190 C200 170 190 140 205 110', '#A9552F', 6);
+  const cape = mk('M712 330 C690 450 600 560 520 640 C470 700 400 720 350 690 C290 640 230 520 210 420 C190 330 180 220 205 110', '#637A5B', 6);
+  const capeLen = cape.getTotalLength ? 1500 : 1500; cape.setAttribute('stroke-dasharray', capeLen);
+  const node = (x, y, n, col) => el(mc, `<div class="abs" style="transform:translate(-50%,-50%);display:flex;align-items:center;gap:8px"><div style="width:20px;height:20px;border-radius:50%;background:${col};border:4px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.2)"></div><div style="font:600 16px Inter">${n}</div></div>`, x + 40, y);
+  node(712, 330, 'JNPT', '#2B231D'); node(205, 110, 'Rotterdam', '#2B231D'); node(470, 235, 'Suez', '#8A7360');
+  const bab = el(mc, `<div class="abs" style="transform:translate(-50%,-50%)"><div class="ring" style="position:absolute;left:50%;top:50%;border-radius:50%;border:3px solid #C8553D;transform:translate(-50%,-50%)"></div><div style="width:22px;height:22px;border-radius:50%;background:#C8553D;border:4px solid #fff"></div></div>`, 560, 395);
+  el(mc, `<div class="abs" style="font:600 15px Inter;color:#B3372B">Bab-el-Mandeb</div>`, 585, 405);
+  const capeLbl = el(mc, `<div class="abs" style="font:600 15px Inter;color:#3F5538">Cape of Good Hope</div>`, 300, 705);
+  const eta = el(mc, `<div class="abs" style="display:flex;align-items:center;gap:12px;background:#2B231D;color:#fff;border-radius:14px;padding:14px 18px">${ic('Radar', 24, '#C9BBA8')}<div><div style="font:600 17px Inter">New ETA +11 d</div><div style="font:400 14px Inter;color:#C9BBA8">broadcast to all 4 roles</div></div></div>`, 290, 40);
+  // copilot card
+  const cp = el(cam, `<div class="card" style="border-radius:24px"></div>`, 1040, 160, 730, 760);
+  el(cp, `<div class="abs" style="display:flex;align-items:center;gap:14px"><div style="width:50px;height:50px;border-radius:14px;background:var(--clay);display:flex;align-items:center;justify-content:center">${ic('Sparkles', 26, '#fff')}</div><div><div style="font:600 23px Inter">Agentic AI Recovery Co-Pilot</div><div style="font:400 15px Inter;color:var(--mut)">2 plans simulated against the live schedule</div></div></div>`, 30, 26);
+  const alert = el(cp, `<div class="abs" style="border-radius:16px;background:#FBEAE4;border:1.5px solid #E7B9A8;padding:16px 20px;width:670px;white-space:normal"><div style="display:flex;align-items:center;gap:10px;font:600 19px Inter;color:#B3372B">${ic('Siren', 24, '#B3372B')} Red Sea Security Advisory · Bab-el-Mandeb</div><div style="display:flex;justify-content:space-between;align-items:baseline;margin-top:10px"><div style="font:400 15px Inter;color:var(--mut)">Projected demurrage and detention</div><div><span class="acc serif" style="font-size:34px;font-weight:600;color:#B3372B"></span> <span style="font:500 15px Inter;color:#B3372B">$2,300/day</span></div></div></div>`, 30, 104);
+  const opts = [['Reroute via Cape of Good Hope', 'Stay on MV Konkan Meridian; no war-risk surcharge.', [['ETA', '+11 d'], ['Cost', '$1,850'], ['CO<sub>2</sub>e', '+994 kg']], 94, '#637A5B'], ['Sea-air via Jebel Ali to AMS', 'Feeder, then a freighter; arrives early, far dirtier.', [['ETA', '−13 d'], ['Cost', '$6,400'], ['CO<sub>2</sub>e', '×25.6']], 79, '#A9552F']];
+  const optEls = opts.map(([h, d, m, conf, col], i) => {
+    const o = el(cp, `<div class="abs" style="border-radius:18px;border:2px solid var(--line);background:#FCF9F4;padding:18px 20px;width:670px;white-space:normal"><div style="display:flex;align-items:center;gap:12px"><div class="radio" style="width:24px;height:24px;border-radius:50%;border:2.5px solid #B8A690;display:flex;align-items:center;justify-content:center"></div><div style="font:600 19px Inter">${h}</div></div><div style="font:400 15px Inter;color:var(--mut);margin:6px 0 0 36px">${d}</div><div style="display:flex;gap:12px;margin:14px 0 0 36px">${m.map(([k, v]) => `<div class="met" style="flex:1;border-radius:12px;background:#fff;border:1px solid var(--line);padding:8px 12px;position:relative;overflow:hidden"><div class="lbl" style="font-size:10.5px">${k}</div><div class="v serif" style="font-size:24px;font-weight:600;color:${col}">${v}</div><div class="sh" style="position:absolute;inset:0;background:linear-gradient(90deg,#F3EDE3 0%,#FFFDF9 50%,#F3EDE3 100%);background-size:200% 100%"></div></div>`).join('')}</div><div style="display:flex;align-items:center;gap:12px;margin:14px 0 0 36px"><div style="flex:1;height:8px;border-radius:4px;background:#EFE6D9;overflow:hidden"><div class="cb" style="height:100%;background:${col};width:0"></div></div><div class="cv" style="font:600 14px Inter;color:var(--mut);width:110px;text-align:right"></div></div></div>`, 30, 262 + i * 220);
+    return o;
+  });
+  const exec = el(cp, `<div class="btn" style="height:58px;font-size:18px"></div>`, 30, 690 - 6, 670, 58);
+  const camF = camKeys([[s, 1400, 260, 1.55], [s + 0.9, 1400, 260, 1.55], [s + 1.6, 1405, 560, 1.22], [s + 4.0, 1405, 560, 1.22], [s + 4.5, 1405, 640, 1.22], [s + 5.1, 1405, 640, 1.22], [s + 5.8, 600, 540, 1.12], [s + 7.0, 600, 520, 1.12], [s + 7.7, 960, 540, 0.95], [e, 960, 540, 0.93, x => x]]);
+  const rA = ripple(cp, 300, 300, s + 3.6), rE = ripple(cp, 365, 713, s + 4.6);
+  cursorTrack(s + 2.6, s + 5.0, [[s + 2.6, 1700, 820], [s + 3.5, 1350, 465], [s + 4.0, 1360, 470], [s + 4.5, 1400, 870], [s + 5.0, 1420, 900]], camF, [s + 3.6, s + 4.6]);
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    const [x, y, k] = camF(t); setCam(cam, x, y, k); rA(t); rE(t);
+    alert.querySelector('.acc').textContent = '$' + (924.43 + (t - s) * 38.3).toFixed(2);
+    optEls.forEach((o, i) => {
+      const reveal = seg(t, s + 2.0 + i * 0.35, s + 2.3 + i * 0.35);
+      pop(o, easeOut(seg(t, s + 0.9 + i * 0.2, s + 1.3 + i * 0.2)), 18);
+      o.querySelectorAll('.sh').forEach(sh => { sh.style.opacity = 1 - reveal; sh.style.backgroundPosition = `${(-(t * 160) % 200).toFixed(0)}% 0`; });
+      o.querySelector('.cb').style.width = (opts[i][3] * ease(seg(t, s + 2.2 + i * 0.35, s + 2.9 + i * 0.35))).toFixed(1) + '%';
+      o.querySelector('.cv').textContent = reveal > 0 ? `${Math.round(opts[i][3] * ease(seg(t, s + 2.2 + i * 0.35, s + 2.9 + i * 0.35)))}% confidence` : '';
+      const sel = i === 0 && t > s + 3.62;
+      o.style.borderColor = sel ? '#637A5B' : 'var(--line)'; o.style.background = sel ? '#F1F5EE' : '#FCF9F4';
+      o.querySelector('.radio').innerHTML = sel ? '<div style="width:12px;height:12px;border-radius:50%;background:#637A5B"></div>' : '';
+      o.querySelector('.radio').style.borderColor = sel ? '#637A5B' : '#B8A690';
+    });
+    const ex = t > s + 4.62, exDone = t > s + 5.1;
+    exec.innerHTML = exDone ? `${ic('CircleCheck', 22, '#fff')} Plan executed · corridor redrawn` : ex ? `<span style="display:inline-block;width:22px;height:22px;border-radius:50%;border:3px solid rgba(255,255,255,.4);border-top-color:#fff;transform:rotate(${((t * 720) % 360).toFixed(0)}deg)"></span> Executing…` : `${ic('Sparkles', 20, '#fff')} Execute Recovery Plan`;
+    exec.style.background = exDone ? '#637A5B' : '#A9552F';
+    const ring = bab.querySelector('.ring'); const ph = (t * 1.2) % 1; ring.style.width = ring.style.height = (22 + ph * 70) + 'px'; ring.style.opacity = (1 - ph) * seg(t, s, s + 0.5);
+    suez.setAttribute('stroke', exDone ? '#C9BBA8' : '#A9552F'); suez.setAttribute('stroke-dasharray', exDone ? '10 12' : 'none'); suez.style.opacity = exDone ? 0.8 : 1;
+    cape.setAttribute('stroke-dashoffset', (1500 * (1 - ease(seg(t, s + 5.4, s + 6.8)))).toFixed(0)); cape.style.opacity = t > s + 5.35 ? 1 : 0;
+    op(capeLbl, seg(t, s + 6.3, s + 6.7)); pop(eta, seg(t, s + 6.6, s + 7.0), 12);
+  } });
+}
+
+// =====================================================================
+// 6. Workspaces, role-aware
+// =====================================================================
+titleScene(58.5, 61.6, ['Seven', 'workspaces.', 'One', 'truth.'], [2, 3]);
+{
+  const s = 61.5, e = 68.1;
+  const { L, cam } = layer(4);
+  const W = el(cam, `<div class="card" style="border-radius:26px;overflow:hidden"></div>`, 150, 120, 1620, 840);
+  const rail = el(W, `<div class="abs" style="background:#F6F0E7;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:22px;padding-top:28px"></div>`, 0, 0, 88, 840);
+  const railIcons = ['Globe', 'Boxes', 'ScanLine', 'Handshake', 'MessagesSquare', 'Wallet', 'Leaf'];
+  rail.innerHTML = railIcons.map((n, i) => `<div style="width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:${i === 1 ? '#A9552F' : 'transparent'}">${ic(n, 26, i === 1 ? '#fff' : '#8A7360')}</div>`).join('');
+  el(W, `<div class="abs"><div class="lbl">Shipments</div><div style="font:600 30px Fraunces;margin-top:6px">Shipments &amp; Fleet Command</div></div>`, 128, 30);
+  const roles = [['Exporter', '#A9552F', 'Present e-BL for LC drawdown'], ['Freight Forwarder', '#8A7360', 'Submit VGM before the 047W cutoff'], ['Customs Broker', '#637A5B', 'File Shipping Bill for LEO at JNPT'], ['Transporter', '#B9822F', 'Confirm gate-in at JNPT Gate 4']];
+  const sw = el(W, `<div class="abs" style="display:flex;gap:6px;background:#F3EDE3;border-radius:999px;padding:6px"></div>`, 860, 34);
+  const slider = el(sw, `<div class="abs" style="top:6px;height:44px;border-radius:999px;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08)"></div>`, 0, 6, 0, 44);
+  const roleBtns = roles.map(([n, c]) => { const b = document.createElement('div'); b.style.cssText = `position:relative;height:44px;padding:0 18px;border-radius:999px;display:flex;align-items:center;gap:8px;font:600 16px Inter;white-space:nowrap`; b.innerHTML = `<span style="width:12px;height:12px;border-radius:50%;background:${c}"></span>${n}`; sw.appendChild(b); return b; });
+  const action = el(W, `<div class="abs" style="display:flex;align-items:center;gap:12px;border-radius:14px;padding:10px 18px;background:#2B231D;color:#fff;font:600 17px Inter"></div>`, 866, 104);
+  const kpis = [['Active shipments', 5, '', 0], ['On-time rate', 94.2, '%', 1], ['At risk / holds', 3, '', 0], ['Cargo value', 1.16, 'M', 2]];
+  const kEls = kpis.map(([n], i) => el(W, `<div class="abs" style="border:1px solid var(--line);border-radius:16px;padding:16px 20px;background:#FCF9F4"><div class="lbl" style="font-size:11px">${n}</div><div class="kv serif" style="font-size:34px;font-weight:600;margin-top:6px"></div></div>`, 128 + i * 372, 190, 350, 110));
+  const head = el(W, `<div class="abs" style="display:grid;grid-template-columns:200px 330px 250px 230px 200px 220px;font:600 13px Inter;letter-spacing:.1em;color:var(--mut);text-transform:uppercase"><div>Shipment</div><div>Route</div><div>Modes</div><div>Status</div><div>ETA</div><div>Baton</div></div>`, 148, 330);
+  const rows = [['SHP-2611-0482', 'Chakan to Duisburg', 'Road · Rail · Sea', ['Red Sea reroute', '#FBEAE4', '#B3372B'], 'Wed 30 Dec', ['Transporter', '#B9822F']], ['SHP-2611-0519', 'Bengaluru to Frankfurt', 'Road · Air', ['In flight', '#E3EBDF', '#3F5538'], 'Fri 27 Nov', ['Forwarder', '#8A7360']], ['SHP-2611-0494', 'Surat to Jebel Ali', 'Road · Sea', ['Customs hold', '#F7E8CD', '#8A5A12'], 'Thu 03 Dec', ['Customs Broker', '#637A5B']], ['SHP-2611-0466', 'Shanghai to JNPT', 'Sea', ['At sea', '#EFE6D9', '#6B5D51'], 'Mon 30 Nov', ['Forwarder', '#8A7360']], ['SHP-2611-0507', 'Chennai to Felixstowe', 'Sea', ['Delayed +18 h', '#FBEAE4', '#B3372B'], 'Wed 09 Dec', ['Forwarder', '#8A7360']], ['SHP-2611-0531', 'Jebel Ali to Mombasa', 'Sea', ['Delivered', '#E3EBDF', '#3F5538'], 'Thu 26 Nov', ['Exporter', '#A9552F']]];
+  const rowEls = rows.map((r, i) => el(W, `<div class="abs" style="display:grid;grid-template-columns:200px 330px 250px 230px 200px 220px;align-items:center;font:500 18px Inter;border-top:1px solid var(--line);padding-top:4px;height:70px"><div class="mono" style="font-size:16px">${r[0]}</div><div>${r[1]}</div><div style="color:var(--mut)">${r[2]}</div><div><span style="padding:6px 14px;border-radius:999px;font:600 15px Inter;background:${r[3][1]};color:${r[3][2]}">${r[3][0]}</span></div><div style="color:var(--mut)">${r[4]}</div><div style="display:flex;align-items:center;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:${r[5][1]}"></span>${r[5][0]}</div></div>`, 148, 370 + i * 74, 1440));
+  const camF = camKeys([[s, 700, 250, 1.45], [s + 0.9, 760, 250, 1.45], [s + 1.5, 960, 560, 1.15], [s + 2.8, 960, 640, 1.15], [s + 3.3, 1300, 235, 1.6], [s + 5.4, 1300, 235, 1.6], [s + 6.0, 960, 540, 0.96], [e, 960, 540, 0.94, x => x]]);
+  const bx = [0, 0, 0, 0];
+  const clicks = [s + 3.7, s + 4.3, s + 4.9];
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    const [x, y, k] = camF(t); setCam(cam, x, y, k);
+    kEls.forEach((ke, i) => { const v = ease(seg(t, s + 0.2, s + 1.2)); const [, val, suf, dp] = kpis[i]; ke.querySelector('.kv').textContent = (i === 3 ? '$' : '') + (val * v).toFixed(dp) + suf; });
+    rowEls.forEach((r, i) => pop(r, easeOut(seg(t, s + 1.3 + i * 0.22, s + 1.6 + i * 0.22)), 16));
+    op(head, seg(t, s + 1.1, s + 1.4));
+    let ri = 0; clicks.forEach((c, j) => { if (t > c) ri = j + 1; });
+    // slider geometry from the live layout
+    let off = 6; roleBtns.forEach((b, i) => { bx[i] = off; off += b.offsetWidth + 6; });
+    const from = clicks.reduce((acc, c, j) => (t > c ? j + 1 : acc), 0);
+    const pr = ri > 0 ? ease(seg(t, clicks[ri - 1], clicks[ri - 1] + 0.3)) : 1;
+    const fromI = Math.max(0, from - 1), toI = from;
+    slider.style.left = lerp(bx[fromI], bx[toI], ri > 0 ? pr : 1) + 'px';
+    slider.style.width = lerp(roleBtns[fromI].offsetWidth, roleBtns[toI].offsetWidth, ri > 0 ? pr : 1) + 'px';
+    const [rn, rc, act] = roles[ri];
+    action.innerHTML = `<span style="width:14px;height:14px;border-radius:50%;background:${rc}"></span><span style="color:#C9BBA8">Next for ${rn}:</span> ${act}`;
+    const fadeA = ri > 0 ? seg(t, clicks[ri - 1] + 0.05, clicks[ri - 1] + 0.3) : seg(t, s + 0.3, s + 0.7); op(action, fadeA);
+  } });
+  // cursor clicks on role pills, positions measured at load time from the fixed layout
+  cursorTrack(s + 3.2, s + 5.4, [[s + 3.2, 1150, 330], [s + 3.6, 1247, 184], [s + 4.2, 1435, 184], [s + 4.8, 1604, 184], [s + 5.4, 1650, 250]], camF, clicks);
+}
+
+// =====================================================================
+// 7. Proof numbers
+// =====================================================================
+{
+  const s = 68.0, e = 73.1;
+  const { L, cam } = layer(4);
+  const dots = dotsCanvas(); L.insertBefore(dots, cam);
+  const line = el(cam, `<div class="abs title" style="font-size:30px"><span class="w"><i class="hl"></i><span class="n1"></span></span> government systems. <span class="w"><i class="hl"></i><span class="n2"></span></span> APIs. Already on ULIP.</div>`, 960, 540);
+  const src = el(L, `<div class="abs" style="font:500 17px Inter;color:var(--mut);transform:translateX(-50%)">Source: Ministry of Commerce &amp; Industry, March 2025</div>`, 960, 980);
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    dots.style.opacity = seg(t, s, s + 0.8); dots.style.transform = `scale(${lerp(1, 1.06, seg(t, s, e))})`;
+    const K = 0.74 * 1920 / Math.max(1, line.offsetWidth);
+    setCam(cam, 960, 540, kf([[s + 0.2, 1], [s + 1.4, K], [e, K * 1.04, x => x]])(t));
+    const c = ease(seg(t, s + 0.4, s + 2.0));
+    line.querySelector('.n1').textContent = Math.round(43 * c); line.querySelector('.n2').textContent = Math.round(129 * c);
+    op(line, seg(t, s + 0.1, s + 0.5));
+    const hp = seg(t, s + 1.7, s + 2.3); line.querySelectorAll('.hl').forEach((b, j) => b.style.transform = `scaleX(${ease(clamp(hp * 2 - j))})`);
+    op(src, seg(t, s + 1.8, s + 2.2));
+  } });
+}
+
+// =====================================================================
+// 8. Integrations
+// =====================================================================
+{
+  const s = 73.0, e = 79.1;
+  const { L, cam } = layer(4);
+  const head = el(cam, `<div class="abs title" style="font-size:44px;z-index:3">Built for India&#8217;s <span class="w"><i class="hl"></i><span>logistics rails</span></span>.</div>`, 960, 540);
+  const tiles = [['FASTag', 'Tag'], ['VAHAN', 'IdCard'], ['ICEGATE', 'Landmark'], ['e-Way Bill', 'Receipt'], ['JNPT Port Gate', 'Anchor'], ['DCSA eBL', 'FileCheck'], ['GLEC CO<sub>2</sub>e', 'Leaf'], ['EU CBAM', 'BadgeCheck'], ['Bank · LC', 'Wallet'], ['SHA-256', 'Fingerprint'], ['ULIP', 'Network'], ['Driver app', 'Smartphone']];
+  const R = rng(42);
+  const T = tiles.map(([n, i], j) => {
+    const a = (j / tiles.length) * Math.PI * 2 + R() * 0.3, z = 0.65 + R() * 0.75;
+    const rx = 700 + R() * 160, ry = 360 + R() * 80;
+    const tx = 960 + rx * Math.cos(a), ty = 540 + ry * Math.sin(a);
+    const e2 = el(cam, `<div class="abs" style="transform-origin:50% 50%;width:190px;height:170px;border-radius:30px;background:#FFFDF9;border:1px solid var(--line);box-shadow:0 14px 34px rgba(60,40,20,.10);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;z-index:${Math.round(z * 10)}">${ic(i, 52, '#A9552F')}<div style="font:600 19px Inter">${n}</div></div>`, tx - 95, ty - 85);
+    return { e: e2, a, z, tx, ty, t0: s + 0.15 + j * 0.09, sp: (R() - 0.5) * 30 };
+  });
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.45, 0.45)) return;
+    setCam(cam, 960, 540, 1);
+    head.style.transform = `translate(-50%,-50%) scale(${lerp(1, 1.18, ease(seg(t, s, e)))})`; op(head, seg(t, s + 0.2, s + 0.7));
+    const hb = head.querySelector('.hl'); hb.style.transform = `scaleX(${ease(seg(t, s + 1.0, s + 1.6))})`;
+    T.forEach(o => {
+      const v = easeOut(seg(t, o.t0, o.t0 + 0.9)), far = 1.8;
+      const x = lerp(960 + (o.tx - 960) * far, o.tx, v) + (t - s) * o.sp * o.z, y = lerp(540 + (o.ty - 540) * far, o.ty, v) - (t - s) * 6 * o.z;
+      o.e.style.left = (x - 95).toFixed(1) + 'px'; o.e.style.top = (y - 85).toFixed(1) + 'px';
+      o.e.style.transform = `scale(${o.z.toFixed(3)})`; o.e.style.opacity = v;
+      o.e.style.filter = o.z > 1.25 ? `blur(${((o.z - 1.25) * 7).toFixed(1)}px)` : 'none';
+    });
+  } });
+}
+
+// =====================================================================
+// 9. Closer + end card
+// =====================================================================
+{
+  const s = 79.0, e = 85.2;
+  const { L, cam } = layer(5);
+  const silk = silkCanvas(); L.insertBefore(silk, cam);
+  const line = el(cam, `<div class="abs title" style="font-size:34px">Run your <span class="w rot" style="display:inline-block;text-align:center"><i class="hl" style="transform:none"></i><span class="word" style="display:inline-block"></span></span> on one shipment record.</div>`, 960, 470);
+  const tag = el(cam, `<div class="abs" style="transform:translate(-50%,-50%);font:500 24px Inter;color:var(--mut)">One Shipment, <i class="serif" style="color:var(--clay);font-weight:500">One Digital Platform</i></div>`, 960, 600);
+  const words = ['documents', 'payments', 'disruptions', 'carbon'];
+  const rot = line.querySelector('.rot'), wspan = line.querySelector('.word');
+  scenes.push({ s, e, update(t) {
+    if (!show(L, t, s, e, 0.5, 0.5)) return;
+    silk.style.transform = `translate(${(-(t - s) * 22).toFixed(1)}px,0)`;
+    setCam(cam, 960, 520, kf([[s, 1.35], [s + 1.2, 1.55], [e, 1.62, x => x]])(t));
+    op(line, seg(t, s + 0.2, s + 0.7));
+    const idx = clamp(Math.floor((t - s - 0.6) / 1.05), 0, 3), ph = (t - s - 0.6) - idx * 1.05;
+    wspan.textContent = words[idx];
+    const v = idx === 0 && t < s + 0.6 ? 1 : easeOut(clamp(ph / 0.3));
+    wspan.style.transform = `translateY(${((1 - v) * 18).toFixed(1)}px)`; wspan.style.opacity = v;
+    rot.style.minWidth = '0px';
+    rot.style.color = '#A9552F'; rot.style.fontStyle = 'italic';
+    op(tag, seg(t, s + 4.2, s + 4.8));
+  } });
+}
+brandScene(85.0, 89.0, `<div style="font:500 84px Fraunces;letter-spacing:-.02em;line-height:1.05">One Shipment,<br><i style="color:var(--clay)">One Digital Platform</i></div><div style="margin-top:28px;font:500 24px Inter;color:var(--mut);letter-spacing:.14em">LOGITHON 2026 · TEAM OUTLIERS</div><div class="mono" style="margin-top:20px;font-size:24px;color:var(--ink)">github.com/shreyascoder2006/atharva_clg</div>`);
+
+// ---------- seek ----------
+window.seek = function (t) {
+  t = clamp(t, 0, VIDEO.duration - 1e-4);
+  for (const sc of scenes) sc.update(t);
+  updateCursor(t);
+};
+
+// ---------- audio ----------
+window.buildAudio = async function (ctx) {
+  const sr = ctx.sampleRate, D = VIDEO.duration;
+  const master = ctx.createDynamicsCompressor(); master.threshold.value = -16; master.ratio.value = 3; master.connect(ctx.destination);
+  const out = ctx.createGain(); out.gain.value = 0.9; out.connect(master);
+  const R = rng(99);
+  const noise = ctx.createBuffer(1, sr * 2, sr); { const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = R() * 2 - 1; }
+  const BPM = 104, beat = 60 / BPM;
+  const midi = n => 440 * Math.pow(2, (n - 69) / 12);
+  const chords = [[53, 57, 60, 64], [57, 60, 64, 67], [48, 55, 59, 64], [55, 59, 62, 64]]; // Fmaj7 Am7 Cmaj7 G6
+  const bus = ctx.createGain(); bus.gain.value = 1; bus.connect(out);
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 1600; lp.connect(bus);
+  function tone(f, t0, dur, type, g, dest = lp, att = 0.02, rel = 0.3) {
+    const o = ctx.createOscillator(); o.type = type; o.frequency.value = f;
+    const a = ctx.createGain(); a.gain.setValueAtTime(0, t0); a.gain.linearRampToValueAtTime(g, t0 + att); a.gain.setValueAtTime(g, Math.max(t0 + att, t0 + dur - rel)); a.gain.linearRampToValueAtTime(0, t0 + dur);
+    o.connect(a); a.connect(dest); o.start(t0); o.stop(t0 + dur + 0.05);
+  }
+  function nz(t0, dur, f, q, g, type = 'bandpass', sweepTo) {
+    const s = ctx.createBufferSource(); s.buffer = noise; const bf = ctx.createBiquadFilter(); bf.type = type; bf.frequency.setValueAtTime(f, t0); if (sweepTo) bf.frequency.exponentialRampToValueAtTime(sweepTo, t0 + dur); bf.Q.value = q;
+    const a = ctx.createGain(); a.gain.setValueAtTime(0, t0); a.gain.linearRampToValueAtTime(g, t0 + Math.min(0.05, dur / 3)); a.gain.exponentialRampToValueAtTime(0.0005, t0 + dur);
+    s.connect(bf); bf.connect(a); a.connect(out); s.start(t0); s.stop(t0 + dur + 0.05);
+  }
+  const bar = beat * 4;
+  // pad
+  for (let b = 0, t0 = 0; t0 < D - 1; b++, t0 += bar * 2) {
+    const ch = chords[b % 4], dur = Math.min(bar * 2 + 0.6, D - t0);
+    const lift = t0 >= 78 ? 1.25 : 1;
+    ch.forEach((n, i) => { tone(midi(n), t0, dur, 'triangle', 0.035 * lift * (t0 < 2 ? 0.7 : 1), lp, 0.8, 1.0); tone(midi(n) * 1.004, t0, dur, 'sine', 0.02 * lift, lp, 0.9, 1.0); });
+    tone(midi(ch[0] - 12), t0, dur, 'sine', 0.06, lp, 0.3, 0.8);
+    if (t0 >= 78) ch.forEach(n => tone(midi(n + 12), t0, dur, 'sine', 0.012, lp, 1.0, 1.0));
+  }
+  // pluck arpeggio from 5 s
+  for (let i = 0, t0 = 5.0; t0 < D - 3.5; i++, t0 += beat / 2) {
+    const ch = chords[Math.floor(t0 / (bar * 2)) % 4]; const n = ch[[0, 2, 1, 3, 2, 1, 3, 2][i % 8]] + 12;
+    tone(midi(n), t0, 0.35, 'triangle', (i % 2 ? 0.022 : 0.03) * (t0 > 78 ? 1.2 : 1), lp, 0.005, 0.3);
+  }
+  // percussion from 9.5 s
+  for (let t0 = 9.5; t0 < D - 4; t0 += beat) {
+    const bi = Math.round((t0 - 9.5) / beat);
+    if (bi % 2 === 0 || t0 > 78) { const o = ctx.createOscillator(); o.type = 'sine'; const a = ctx.createGain(); o.frequency.setValueAtTime(120, t0); o.frequency.exponentialRampToValueAtTime(45, t0 + 0.18); a.gain.setValueAtTime(0.22, t0); a.gain.exponentialRampToValueAtTime(0.001, t0 + 0.25); o.connect(a); a.connect(out); o.start(t0); o.stop(t0 + 0.3); }
+    if (t0 > 14.5) nz(t0 + beat / 2, 0.06, 8000, 0.8, 0.035, 'highpass');
+  }
+  // SFX
+  const whoosh = t0 => nz(t0, 0.7, 400, 0.7, 0.10, 'bandpass', 3200);
+  const click = t0 => { nz(t0, 0.04, 3000, 2, 0.12); tone(1800, t0, 0.05, 'sine', 0.04, out, 0.002, 0.04); };
+  const tick = t0 => tone(2600, t0, 0.04, 'sine', 0.025, out, 0.002, 0.03);
+  const chime = (t0, g = 0.06) => [1, 2.76, 5.4].forEach((m, i) => tone(midi(84) * m / 2, t0, 1.6, 'sine', g / (i + 1), out, 0.005, 1.5));
+  const popS = t0 => tone(880, t0, 0.09, 'sine', 0.04, out, 0.003, 0.08);
+  [5.0, 14.5, 24.0, 36.0, 47.0, 58.5, 68.0, 79.0].forEach(t0 => whoosh(t0 + 0.15));
+  [17.5 + 3.4, 27.0 + 2.2, 27.0 + 7.0, 39.0 + 3.4, 39.0 + 5.8, 50.0 + 5.8, 61.5 + 6.0].forEach(t0 => nz(t0 - 0.2, 0.6, 600, 0.6, 0.05, 'bandpass', 2000));
+  [28.6, 32.8, 40.8, 53.6, 54.6, 65.2, 65.8, 66.4].forEach(click);
+  for (let i = 0; i < 6; i++) popS(9.85 + i * 0.55);
+  for (let i = 0; i < 4; i++) popS(18.7 + i * 0.18);
+  for (let i = 0; i < 9; i++) tick(28.8 + i * 0.15);
+  for (let i = 0; i < 18; i++) tick(33.8 + i * 0.055);
+  chime(33.1, 0.05); chime(43.6, 0.06); chime(55.1, 0.05); chime(85.2, 0.08);
+  nz(13.4, 0.25, 220, 1.2, 0.12, 'lowpass');
+};
+
+// ---------- preview / render mode ----------
+const RENDER = location.search.includes('render');
+const ui = document.getElementById('ui');
+if (RENDER) { ui.remove(); document.body.style.background = '#000'; }
+else {
+  const fit = () => { const k = Math.min(innerWidth / 1920, (innerHeight - 56) / 1080); stage.style.transform = `scale(${k})`; };
+  addEventListener('resize', fit); fit();
+  let buf, ac, src, startAt = 0, offset = 0, playing = false;
+  const pp = document.getElementById('pp'), sc = document.getElementById('scrub'), tc = document.getElementById('tc');
+  async function play() {
+    ac ??= new AudioContext();
+    if (!buf) { const off = new OfflineAudioContext(2, Math.ceil(48000 * VIDEO.duration), 48000); await buildAudio(off); buf = await off.startRendering(); }
+    src = ac.createBufferSource(); src.buffer = buf; src.connect(ac.destination);
+    src.start(0, offset % VIDEO.duration); startAt = ac.currentTime; playing = true; pp.textContent = 'Pause';
+  }
+  function pause() { if (!playing) return; offset += ac.currentTime - startAt; src.stop(); playing = false; pp.textContent = 'Play'; }
+  const now = () => playing ? (offset + ac.currentTime - startAt) % VIDEO.duration : offset;
+  pp.onclick = () => playing ? pause() : play();
+  sc.oninput = () => { const was = playing; pause(); offset = sc.value / 1000 * VIDEO.duration; if (was) play(); };
+  (function loop() { const t = now(); seek(t); sc.value = t / VIDEO.duration * 1000; tc.textContent = t.toFixed(1) + ' s'; requestAnimationFrame(loop); })();
+}
+seek(0);
+</script>
+</body>
+</html>
