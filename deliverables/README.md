@@ -8,9 +8,13 @@
 | --- | --- |
 | `Logithon2026_TeamOutliers_OneShipment.pptx` | The 12-slide deck. Each slide carries a timed presenter script in its speaker notes. |
 | `Logithon2026_TeamOutliers_OneShipment.pdf` | The same deck as a PDF. |
-| `OneShipment_Explainer.mp4` | An 89-second motion explainer of the deck and prototype, at 1920×1080 and 60 fps with music. |
+| `OneShipment_Explainer.mp4` | A 90-second **narrated** motion explainer of the deck and prototype, at 1920×1080 and 60 fps. A voiceover explains each scene over music. |
+| `OneShipment_Explainer_MusicOnly.mp4` | The same video with music only and no voice. Use it under your own narration. |
 | `explainer/demo.html` | The source of that explainer. Open it in a browser to play it or scrub through it. |
-| `explainer/` (other files) | The page template, build and render scripts used to regenerate the MP4. |
+| `explainer/narration.txt` | The voiceover script with each line's start time. |
+| `explainer/` (other files) | The page template, the build and render scripts, and `narrate.py` (the voiceover generator). |
+
+The voiceover is synthetic. It uses Piper, an open-source neural text-to-speech engine, with the `en_US-lessac-high` voice. Each line is timed to its scene, and the music ducks under the voice. The mix is normalised to −16 LUFS.
 
 ## What Logithon asks for, and what is still yours to do
 
@@ -84,3 +88,21 @@ node render.cjs demo.html OneShipment_Explainer.mp4 60 4 4
 ```
 
 `build.cjs` inlines the fonts, icons and demo hash from `template.html` into `demo.html`. The render needs `ffmpeg` on the PATH.
+
+To regenerate the voiceover:
+
+1. Install Piper:
+
+   ```bash
+   pip install piper-tts
+   ```
+
+2. Download `en_US-lessac-high.onnx` and its `.json` file from `huggingface.co/rhasspy/piper-voices`.
+
+3. Run the generator. It writes one WAV per line and `lines.json` with the start times:
+
+   ```bash
+   python narrate.py en_US-lessac-high.onnx
+   ```
+
+4. Delay each line to its start time, duck the music under the voice with ffmpeg's `sidechaincompress`, and normalise the mix with `loudnorm`.
