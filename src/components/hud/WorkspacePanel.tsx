@@ -63,7 +63,7 @@ export function WorkspacePanel() {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 40, opacity: 0 }}
             transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-            className="glass pointer-events-auto absolute top-[84px] right-4 bottom-4 z-20 flex w-[384px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-[22px]"
+            className="glass pointer-events-auto absolute top-[84px] right-4 bottom-[calc(16px+var(--navb))] z-20 flex w-[384px] max-w-[calc(100vw-32px)] flex-col overflow-hidden rounded-[22px]"
             aria-label={`${ROLES[role].label} workspace`}
           >
             <PanelHeader role={role} onClose={toggle} />

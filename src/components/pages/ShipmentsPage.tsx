@@ -87,10 +87,10 @@ export default function ShipmentsPage() {
       <Card className="mt-4" pad={false}>
         <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4 pb-3">
           <div>
-            <div className="eyebrow">Fleet command</div>
-            <h2 className="text-[14.5px] font-semibold tracking-tight text-ink">
-              {shown.length} shipment{shown.length === 1 ? '' : 's'}
-            </h2>
+            <h2 className="text-[14.5px] font-semibold tracking-tight text-ink">Fleet command</h2>
+            <p className="mt-0.5 text-[11.5px] text-muted">
+              {shown.length} of {rows.length} shipment{rows.length === 1 ? '' : 's'} shown
+            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <label className="flex h-9 items-center gap-2 rounded-xl border border-[rgba(15,23,42,0.08)] bg-white px-2.5 text-muted focus-within:ring-2 focus-within:ring-cobalt/30">
@@ -131,7 +131,19 @@ export default function ShipmentsPage() {
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={layout} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }} transition={{ duration: 0.2 }}>
             {shown.length === 0 ? (
-              <div className="px-5 pb-8 text-center text-[12px] text-muted">No shipments match.</div>
+              <div className="flex flex-col items-center gap-1.5 px-5 pt-6 pb-10 text-center">
+                <p className="text-[13px] font-semibold text-ink">{query ? `No shipments match “${query}”` : 'No shipments in this view'}</p>
+                <p className="max-w-[360px] text-[12px] text-muted">Search by shipment ID, port or cargo, or clear the search and filter to see all {rows.length}.</p>
+                <button
+                  onClick={() => {
+                    setQuery('');
+                    setFilter('all');
+                  }}
+                  className="mt-1 h-8 rounded-lg px-3 text-[12px] font-semibold text-cobalt transition-colors hover:bg-cobalt/[0.08]"
+                >
+                  Clear search and filter
+                </button>
+              </div>
             ) : layout === 'table' ? (
               <ShipmentTable rows={shown} />
             ) : (
@@ -182,11 +194,10 @@ function ShipmentTable({ rows }: { rows: PortfolioRow[] }) {
               <Fragment key={r.id}>
               <tr
                 onClick={() => r.live && select(r.live)}
-                className={`group border-b border-[rgba(15,23,42,0.05)] transition-colors last:border-0 ${r.live ? 'cursor-pointer' : ''} ${isSel ? 'bg-cobalt/[0.035]' : 'hover:bg-slate-900/[0.02]'}`}
+                className={`group border-b border-[rgba(15,23,42,0.05)] transition-colors last:border-0 ${r.live ? 'cursor-pointer' : ''} ${isSel ? 'bg-cobalt/[0.06]' : 'hover:bg-slate-900/[0.025]'}`}
                 aria-selected={isSel}
               >
                 <td className="relative py-3 pl-4">
-                  {isSel && <span className="absolute top-3 bottom-3 left-0 w-[3px] rounded-r-full bg-cobalt" />}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -238,7 +249,7 @@ function ShipmentTable({ rows }: { rows: PortfolioRow[] }) {
                 </td>
                 <td className="num px-3 text-right text-[12px] font-semibold text-ink">{formatUsd(r.valueUsd)}</td>
                 <td className="py-3 pr-5 pl-3 text-right">
-                  <TrackButton id={r.id} />
+                  <TrackButton id={r.id} compact />
                 </td>
               </tr>
               <AnimatePresence initial={false}>
@@ -387,7 +398,7 @@ function Baton({ r }: { r: PortfolioRow }) {
   );
 }
 
-function TrackButton({ id }: { id: string }) {
+function TrackButton({ id, compact = false }: { id: string; compact?: boolean }) {
   const track = useShipment((s) => s.trackShipment);
   return (
     <button
@@ -398,7 +409,7 @@ function TrackButton({ id }: { id: string }) {
       className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg px-2.5 text-[11.5px] font-semibold whitespace-nowrap text-cobalt transition-colors hover:bg-cobalt/[0.08]"
       aria-label={`Track ${id} on the 3D globe`}
     >
-      Track on 3D Globe <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+      {compact ? 'Track' : 'Track on 3D Globe'} <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
     </button>
   );
 }

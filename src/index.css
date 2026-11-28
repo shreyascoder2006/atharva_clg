@@ -13,7 +13,7 @@
   --color-ink: #0f172a;
   --color-ink-2: #1e293b;
   --color-muted: #475569;
-  --color-subtle: #94a3b8;
+  --color-subtle: #5b6b80;
   --color-hairline: rgb(15 23 42 / 0.08);
   --color-paper: #ffffff;
 
@@ -89,6 +89,14 @@
 
   button {
     cursor: pointer;
+  }
+  input,
+  textarea {
+    caret-color: var(--color-cobalt);
+  }
+  ::placeholder {
+    color: var(--color-subtle);
+    opacity: 1;
   }
   button:disabled {
     cursor: not-allowed;

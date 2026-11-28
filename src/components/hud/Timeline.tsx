@@ -177,7 +177,7 @@ function Scrubber() {
         {ticks.map((t) => (
           <div key={t} className="absolute top-[28px]" style={{ left: `${pct(t)}%` }}>
             <div className="mx-auto h-1.5 w-px bg-slate-900/15" />
-            <div className="num mt-0.5 -translate-x-1/2 text-[9px] font-medium whitespace-nowrap text-subtle">
+            <div className={`num mt-0.5 -translate-x-1/2 text-[9px] font-medium whitespace-nowrap text-subtle ${t % 24 === 0 ? '' : 'max-sm:hidden'}`}>
               {t === 0 ? '' : `${t > 0 ? '+' : ''}${t}h`}
             </div>
           </div>

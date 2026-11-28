@@ -66,10 +66,10 @@ export default function PartnersPage() {
 
       <div className="mt-4 flex items-baseline justify-between">
         <div>
-          <div className="eyebrow">Quote comparison</div>
           <h2 className="text-[15px] font-semibold tracking-tight text-ink">
             {quotes.length} bids · {def.origin} → {def.destination} · {def.unit.equipment}
           </h2>
+          <p className="mt-0.5 text-[11.5px] text-muted">Quote comparison for the active shipment</p>
         </div>
         <span className="text-[11px] text-subtle">All-in USD · {def.incoterm}</span>
       </div>
@@ -176,8 +176,8 @@ function Priorities({ weights, onChange }: { weights: Weights; onChange: (w: Wei
     <Card className="mt-3" pad={false}>
       <div className="flex flex-wrap items-center justify-between gap-3 px-5 pt-4">
         <div>
-          <div className="eyebrow">Your priorities</div>
-          <div className="text-[13px] font-semibold text-ink">Re-rank the bids for what matters on this shipment</div>
+          <h3 className="text-[13px] font-semibold text-ink">Re-rank the bids for what matters on this shipment</h3>
+          <p className="mt-0.5 text-[11.5px] text-muted">Your priorities set the weights; every bid re-scores live.</p>
         </div>
         <div role="radiogroup" aria-label="Priority preset" className="flex flex-wrap gap-1.5">
           {PRIORITY_PRESETS.map((p) => {

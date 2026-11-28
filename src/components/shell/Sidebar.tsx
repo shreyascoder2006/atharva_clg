@@ -19,7 +19,7 @@ import { ROLE_ORDER, ROLES } from '@/data/shipment';
 import { VIEWS, type ViewId } from '@/lib/routes';
 import { TONE_HEX, type Tone } from '@/lib/palette';
 import { partyOf, unreadCount, useShipment } from '@/store/shipment';
-import { RAIL_COLLAPSED, RAIL_EXPANDED, RAIL_MOBILE, useIsMobile } from './layout';
+import { RAIL_COLLAPSED, RAIL_EXPANDED, useIsMobile } from './layout';
 
 const ICON: Record<ViewId, LucideIcon> = {
   tower: Earth,
@@ -59,21 +59,12 @@ export function Sidebar() {
   const mobile = useIsMobile();
   const badges = useBadges();
   const expanded = !collapsed;
-  const width = expanded ? RAIL_EXPANDED : mobile ? RAIL_MOBILE : RAIL_COLLAPSED;
+  const width = expanded ? RAIL_EXPANDED : RAIL_COLLAPSED;
+
+  if (mobile) return <TabBar view={view} onPick={setView} badges={badges} />;
 
   return (
     <>
-      <AnimatePresence>
-        {mobile && expanded && (
-          <motion.div
-            className="absolute inset-0 z-40 bg-slate-900/10 backdrop-blur-[2px]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={toggle}
-          />
-        )}
-      </AnimatePresence>
       <motion.nav
         aria-label="Workspaces"
         className="absolute inset-y-0 left-0 z-50 flex flex-col border-r border-[rgba(15,23,42,0.08)] bg-white/80 py-3 shadow-[inset_-1px_0_0_rgba(255,255,255,0.9),12px_0_32px_rgba(15,23,42,0.06)] backdrop-blur-xl"
@@ -82,7 +73,7 @@ export function Sidebar() {
         transition={{ type: 'spring', stiffness: 380, damping: 38 }}
       >
         {/* Brand. */}
-        <div className="flex h-11 items-center gap-2.5 overflow-hidden px-[14px]" style={{ paddingLeft: mobile && !expanded ? 10 : 14 }}>
+        <div className="flex h-11 items-center gap-2.5 overflow-hidden px-[14px]">
           <span className="shrink-0 [&>span]:h-10 [&>span]:w-10 [&>span]:rounded-xl">
             <Logo />
           </span>
@@ -110,10 +101,7 @@ export function Sidebar() {
                 expanded={expanded}
                 badge={badges[v.id]}
                 shortcut={i + 1}
-                onClick={() => {
-                  setView(v.id);
-                  if (mobile && expanded) toggle();
-                }}
+                onClick={() => setView(v.id)}
               />
             </li>
           ))}
@@ -139,6 +127,56 @@ export function Sidebar() {
         </div>
       </motion.nav>
     </>
+  );
+}
+
+/** Short names for the phone tab bar, where seven labels share 390px. */
+const TAB_LABEL: Record<ViewId, string> = {
+  tower: 'Tower',
+  shipments: 'Shipments',
+  documents: 'Docs',
+  partners: 'Partners',
+  comms: 'Comms',
+  financials: 'Finance',
+  integrations: 'Carbon',
+};
+
+/** Phones: the workspaces as a bottom tab bar, so every page keeps the full width. */
+function TabBar({ view, onPick, badges }: { view: ViewId; onPick: (v: ViewId) => void; badges: Partial<Record<ViewId, Badge>> }) {
+  return (
+    <nav
+      aria-label="Workspaces"
+      className="absolute inset-x-0 bottom-0 z-50 flex h-[var(--navb)] items-stretch border-t border-[rgba(15,23,42,0.08)] bg-white/85 px-0.5 pb-[env(safe-area-inset-bottom)] shadow-[0_-12px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl"
+    >
+      {VIEWS.map((v) => {
+        const Icon = ICON[v.id];
+        const active = view === v.id;
+        const badge = badges[v.id];
+        return (
+          <button
+            key={v.id}
+            onClick={() => onPick(v.id)}
+            aria-current={active ? 'page' : undefined}
+            aria-label={badge ? `${v.label} · ${badge.label}` : v.label}
+            className="relative flex min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[10px] font-semibold transition-colors"
+            style={{ color: active ? '#1E3A8A' : '#475569' }}
+          >
+            {active && (
+              <motion.span
+                layoutId="tab-pill"
+                className="absolute inset-x-1 top-1.5 h-[30px] rounded-xl bg-cobalt/[0.1] shadow-[inset_0_0_0_1px_rgba(37,99,235,0.2)]"
+                transition={{ type: 'spring', stiffness: 460, damping: 36 }}
+              />
+            )}
+            <span className="relative mt-0.5 grid place-items-center" style={{ color: active ? '#2563EB' : undefined }}>
+              <Icon size={18} strokeWidth={active ? 2.2 : 1.9} />
+              {badge && <IconBadge badge={badge} />}
+            </span>
+            <span className="relative max-w-full truncate px-px tracking-[-0.01em]">{TAB_LABEL[v.id]}</span>
+          </button>
+        );
+      })}
+    </nav>
   );
 }
 
@@ -191,11 +229,6 @@ function NavItem({
           <motion.span
             layoutId="nav-pill"
             className="absolute inset-0 rounded-xl bg-gradient-to-r from-cobalt/[0.12] to-cobalt/[0.05] shadow-[inset_0_0_0_1px_rgba(37,99,235,0.22),inset_0_1px_0_rgba(255,255,255,0.9),0_8px_20px_-12px_rgba(37,99,235,0.55)]"
-            transition={{ type: 'spring', stiffness: 460, damping: 36 }}
-          />
-          <motion.span
-            layoutId="nav-bar"
-            className="absolute top-2.5 -left-3 h-5 w-[3px] rounded-r-full bg-cobalt"
             transition={{ type: 'spring', stiffness: 460, damping: 36 }}
           />
         </>

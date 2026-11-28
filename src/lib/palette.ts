@@ -9,7 +9,7 @@ export const PALETTE = {
   studio2: '#E6EEF8',
   ink: '#0F172A',
   muted: '#475569',
-  subtle: '#94A3B8',
+  subtle: '#5B6B80',
 
   ocean: '#D3E2F3',
   oceanDeep: '#C4D6EC',

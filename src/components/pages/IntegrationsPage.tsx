@@ -50,7 +50,7 @@ export default function IntegrationsPage() {
       subtitle="Scope 3 transport emissions measured per leg on the GLEC method, ready for EU CBAM reporting, and the government APIs that feed every milestone on the platform."
       actions={<ShipmentPicker />}
     >
-      <SectionHead icon={<Leaf size={14} />} eyebrow="Section A" title="Scope 3 carbon & CBAM analytics" />
+      <SectionHead icon={<Leaf size={14} />} title="Scope 3 carbon & CBAM analytics" />
       <div className="grid grid-cols-3 gap-4 max-xl:grid-cols-1">
         <LegEmissions />
         <FleetByMode />
@@ -60,7 +60,7 @@ export default function IntegrationsPage() {
         <CbamCard shifts={shifts[FLAGSHIP] ?? {}} />
       </div>
 
-      <SectionHead icon={<Webhook size={14} />} eyebrow="Section B" title="ULIP live API topology" className="mt-8" />
+      <SectionHead icon={<Webhook size={14} />} title="ULIP live API topology" className="mt-8" />
       <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(0,1fr)] gap-4 max-xl:grid-cols-1">
         <Topology />
         <EventStream />
@@ -70,14 +70,11 @@ export default function IntegrationsPage() {
   );
 }
 
-function SectionHead({ icon, eyebrow, title, className = '' }: { icon: React.ReactNode; eyebrow: string; title: string; className?: string }) {
+function SectionHead({ icon, title, className = '' }: { icon: React.ReactNode; title: string; className?: string }) {
   return (
     <div className={`mb-3 flex items-center gap-2.5 ${className}`}>
       <span className="grid h-7 w-7 place-items-center rounded-lg bg-white text-cobalt shadow-[inset_0_0_0_1px_rgb(15_23_42/0.08)]">{icon}</span>
-      <div className="leading-tight">
-        <div className="eyebrow">{eyebrow}</div>
-        <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>
-      </div>
+      <h2 className="text-[15px] leading-tight font-semibold tracking-tight text-ink">{title}</h2>
     </div>
   );
 }

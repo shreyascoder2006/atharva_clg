@@ -11,7 +11,7 @@ import { RoleSwitcher, ShipmentCard, Toolbar } from '@/components/hud/TopBar';
 import { WorkspacePanel } from '@/components/hud/WorkspacePanel';
 import { GlobeOverlay } from '@/components/overlay/GlobeOverlay';
 import { DriverPhone } from '@/components/phone/DriverPhone';
-import { railOffset, useIsMobile } from '@/components/shell/layout';
+import { NAV_BAR_MOBILE, railOffset, useIsMobile } from '@/components/shell/layout';
 import { Sidebar } from '@/components/shell/Sidebar';
 import { DocXrayModal } from '@/components/xray/DocXrayModal';
 import { ROLE_ORDER, ULIP } from '@/data/shipment';
@@ -151,7 +151,7 @@ export default function App() {
   usePrefetchPages();
 
   return (
-    <div className="relative h-full w-full overflow-hidden" style={{ '--rail': `${railOffset(collapsed, mobile)}px` } as CSSProperties}>
+    <div className="relative h-full w-full overflow-hidden" style={{ '--rail': `${railOffset(collapsed, mobile)}px`, '--navb': mobile ? `${NAV_BAR_MOBILE}px` : '0px' } as CSSProperties}>
       {/* Control Tower. Never unmounted: hidden with CSS and its render loop paused, so
           coming back is instant, with the camera and scene exactly as they were. */}
       <motion.div
@@ -168,7 +168,7 @@ export default function App() {
 
       {/* Dashboards, right of the rail. The container itself is click-through: on the
           Control Tower it is empty and must not swallow the globe's drag, zoom and picking. */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 left-[var(--rail)] transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
+      <div className="pointer-events-none absolute top-0 right-0 bottom-[var(--navb)] left-[var(--rail)] transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]">
         <AnimatePresence initial={false}>
           {!tower && (
             <motion.main
@@ -193,7 +193,7 @@ export default function App() {
         className={
           tower
             ? 'pointer-events-none absolute top-[72px] right-[416px] left-[calc(var(--rail)+372px)] z-40 flex justify-center max-[1099px]:right-4 max-md:top-[124px] max-md:left-[calc(var(--rail)+16px)]'
-            : 'pointer-events-none absolute right-6 bottom-6 z-40 flex justify-end max-md:right-4 max-md:left-[calc(var(--rail)+16px)]'
+            : 'pointer-events-none absolute right-6 bottom-[calc(24px+var(--navb))] z-40 flex justify-end max-md:right-4 max-md:left-[calc(var(--rail)+16px)]'
         }
       >
         <Toasts />
@@ -255,7 +255,7 @@ function ControlTower({ active }: { active: boolean }) {
 
       <div className="pointer-events-none absolute inset-0 z-10">
         {/* Left column, right of the rail: shipment summary, lens dock, and the sidebar card or Co-Pilot. */}
-        <div className="absolute top-4 bottom-[200px] left-[calc(var(--rail)+16px)] flex flex-col gap-3 transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-md:top-[68px] max-sm:bottom-[132px]">
+        <div className="absolute top-4 bottom-[calc(200px+var(--navb))] left-[calc(var(--rail)+16px)] flex flex-col gap-3 transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-md:top-[68px] max-sm:bottom-[calc(132px+var(--navb))]">
           <ShipmentCard collapsed={!!disruption} />
           <div className="flex min-h-0 items-start gap-2">
             <LensDock />
@@ -283,7 +283,7 @@ function ControlTower({ active }: { active: boolean }) {
 
         <WorkspacePanel />
 
-        <div className="absolute right-[416px] bottom-4 left-[calc(var(--rail)+84px)] transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-[1099px]:right-4">
+        <div className="absolute right-[416px] bottom-[calc(16px+var(--navb))] left-[calc(var(--rail)+84px)] transition-[left] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] max-[1099px]:right-4">
           <Timeline />
         </div>
       </div>

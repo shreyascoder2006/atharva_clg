@@ -219,10 +219,10 @@ function Thread() {
       <header className="flex items-center gap-3 border-b border-[rgba(15,23,42,0.06)] px-5 py-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="num truncate text-[14px] font-semibold text-ink">{c.name}</h2>
-            <label className="lg:hidden">
+            <h2 className="num truncate text-[14px] font-semibold text-ink max-lg:sr-only">{c.name}</h2>
+            <label className="min-w-0 lg:hidden">
               <span className="sr-only">Channel</span>
-              <select value={channel} onChange={(e) => setChannel(e.target.value as ChannelId)} className="rounded-md bg-slate-900/[0.05] px-1.5 py-0.5 text-[11px]">
+              <select value={channel} onChange={(e) => setChannel(e.target.value as ChannelId)} className="num max-w-full truncate rounded-lg bg-slate-900/[0.05] py-1 pr-1 pl-2 text-[13px] font-semibold text-ink">
                 {CHANNELS.map((x) => (
                   <option key={x.id} value={x.id}>
                     {x.name}
@@ -416,7 +416,7 @@ function Composer({ quick }: { quick: string[] }) {
               send();
             }
           }}
-          placeholder={`Message ${CHANNEL_BY_ID[channel].name} as ${person}…`}
+          placeholder={`Message as ${person}…`}
           aria-label="Message"
           className="max-h-28 min-h-[30px] flex-1 resize-none bg-transparent py-1 text-[12.5px] text-ink outline-none placeholder:text-subtle"
         />

@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 import { ChevronDown } from 'lucide-react';
 
 import { RoleSwitcher } from '@/components/hud/TopBar';
-import { Dot, Sparkline } from '@/components/hud/ui';
+import { Dot, Kbd, Sparkline } from '@/components/hud/ui';
 import { FLEET } from '@/data/fleet';
 import { ROLES, SHIPMENT_IDS, type Role, type ShipmentId } from '@/data/shipment';
 import { formatTime } from '@/lib/format';
@@ -35,13 +35,13 @@ export function DashPage({
       <div className={clsx('mx-auto w-full max-w-[1480px] px-6 pt-5 max-md:px-4', fill ? 'flex min-h-0 flex-1 flex-col pb-5' : 'pb-10')}>
         <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <div className="eyebrow flex items-center gap-2">
-              <span className="num text-subtle">{String(index + 1).padStart(2, '0')}</span>
-              <span className="h-px w-5 bg-[rgba(15,23,42,0.15)]" />
-              {meta.label}
-            </div>
-            <h1 className="mt-1 text-[24px] leading-tight font-semibold tracking-[-0.02em] text-ink max-md:text-[20px]">{meta.title}</h1>
-            <p className="mt-1 max-w-[600px] text-[12.5px] text-muted">{subtitle}</p>
+            <h1 className="flex items-center gap-2.5 text-[24px] leading-tight font-semibold tracking-[-0.02em] text-ink max-md:text-[20px]">
+              {meta.title}
+              <span className="translate-y-px max-md:hidden" title={`Alt+${index + 1} opens ${meta.label} from anywhere`}>
+                <Kbd>Alt {index + 1}</Kbd>
+              </span>
+            </h1>
+            <p className="mt-1.5 max-w-[620px] text-[12.5px] text-muted">{subtitle}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {actions}
@@ -96,8 +96,8 @@ export function Card({
       {(title || eyebrow || action) && (
         <div className={clsx('mb-4 flex items-start justify-between gap-3', !pad && 'px-5 pt-5')}>
           <div className="min-w-0">
-            {eyebrow && <div className="eyebrow mb-0.5">{eyebrow}</div>}
             {title && <h2 className="text-[14.5px] font-semibold tracking-tight text-ink">{title}</h2>}
+            {eyebrow && <p className="mt-0.5 text-[11.5px] text-muted">{eyebrow}</p>}
           </div>
           {action}
         </div>
@@ -249,7 +249,7 @@ export function Segmented<T extends string>({
   id: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex items-center gap-0.5 rounded-xl bg-slate-900/[0.05] p-0.5">
+    <div role="radiogroup" aria-label={label} className="scroll-quiet flex max-w-full items-center gap-0.5 overflow-x-auto rounded-xl bg-slate-900/[0.05] p-0.5">
       {options.map((o) => {
         const active = o.value === value;
         return (
@@ -258,7 +258,7 @@ export function Segmented<T extends string>({
             role="radio"
             aria-checked={active}
             onClick={() => onChange(o.value)}
-            className="relative flex h-8 items-center gap-1.5 rounded-[10px] px-3 text-[12px] font-semibold transition-colors"
+            className="relative flex h-8 shrink-0 items-center gap-1.5 rounded-[10px] px-3 text-[12px] font-semibold whitespace-nowrap transition-colors"
             style={{ color: active ? '#0F172A' : '#475569' }}
           >
             {active && (

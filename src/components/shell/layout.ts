@@ -1,9 +1,10 @@
 import { useSyncExternalStore } from 'react';
 
-/** Sidebar widths, px. Mobile keeps the slim rail and expands over the content. */
+/** Sidebar widths, px. On phones the rail becomes a bottom tab bar of NAV_BAR_MOBILE px. */
 export const RAIL_COLLAPSED = 72;
 export const RAIL_EXPANDED = 240;
-export const RAIL_MOBILE = 60;
+export const RAIL_MOBILE = 0;
+export const NAV_BAR_MOBILE = 64;
 export const MOBILE_QUERY = '(max-width: 767px)';
 
 function subscribe(cb: () => void) {

@@ -40,7 +40,7 @@ export function DriverPhone() {
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.9 }}
             onClick={() => setPhone(true)}
-            className="glass absolute bottom-4 left-[calc(var(--rail)+16px)] z-30 grid h-[56px] w-[56px] place-items-center rounded-2xl text-violet transition-transform hover:scale-[1.04]"
+            className="glass absolute bottom-[calc(16px+var(--navb))] left-[calc(var(--rail)+16px)] z-30 grid h-[56px] w-[56px] place-items-center rounded-2xl text-violet transition-transform hover:scale-[1.04]"
             title="Driver mobile simulator"
             aria-label="Open driver mobile simulator"
           >
@@ -56,7 +56,7 @@ export function DriverPhone() {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 40, scale: 0.94 }}
             transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute bottom-4 left-[calc(var(--rail)+16px)] z-40 origin-bottom-left"
+            className="absolute bottom-[calc(16px+var(--navb))] left-[calc(var(--rail)+16px)] z-40 origin-bottom-left"
           >
             <PhoneFrame onClose={() => setPhone(false)}>
               <DriverChat />
